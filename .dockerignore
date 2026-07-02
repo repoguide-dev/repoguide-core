@@ -1,0 +1,10 @@
+.git
+.gitignore
+.DS_Store
+.idea
+.claude
+coverage
+*.log
+.gomodcache
+.gocaches
+.pycache
