@@ -32,22 +32,24 @@ type RepoSessionEvents struct {
 }
 
 type SessionEvent struct {
-	Index       int               `bson:"index"                  json:"index"`
-	Timestamp   string            `bson:"timestamp,omitempty"    json:"timestamp,omitempty"`
-	Kind        string            `bson:"kind"                   json:"kind"`
-	Role        string            `bson:"role,omitempty"         json:"role,omitempty"`
-	Text        string            `bson:"text,omitempty"         json:"text,omitempty"`
-	Model       string            `bson:"model,omitempty"        json:"model,omitempty"`
-	ToolName    string            `bson:"toolName,omitempty"     json:"toolName,omitempty"`
-	ToolCallID  string            `bson:"toolCallId,omitempty"   json:"toolCallId,omitempty"`
-	IsError     bool              `bson:"isError,omitempty"      json:"isError,omitempty"`
-	TokenUsage  *TokenUsage       `bson:"tokenUsage,omitempty"   json:"tokenUsage,omitempty"`
-	ReadPaths   []string          `bson:"readPaths,omitempty"    json:"readPaths,omitempty"`
-	WritePaths  []string          `bson:"writePaths,omitempty"   json:"writePaths,omitempty"`
-	Command     []string          `bson:"command,omitempty"      json:"command,omitempty"`
-	CommandText string            `bson:"commandText,omitempty"  json:"commandText,omitempty"`
-	SearchQuery string            `bson:"searchQuery,omitempty"  json:"searchQuery,omitempty"`
-	Metadata    map[string]string `bson:"metadata,omitempty"     json:"metadata,omitempty"`
+	Index        int               `bson:"index"                  json:"index"`
+	Timestamp    string            `bson:"timestamp,omitempty"    json:"timestamp,omitempty"`
+	Kind         string            `bson:"kind"                   json:"kind"`
+	Role         string            `bson:"role,omitempty"         json:"role,omitempty"`
+	Text         string            `bson:"text,omitempty"         json:"text,omitempty"`
+	Model        string            `bson:"model,omitempty"        json:"model,omitempty"`
+	ToolName     string            `bson:"toolName,omitempty"     json:"toolName,omitempty"`
+	ToolCallID   string            `bson:"toolCallId,omitempty"   json:"toolCallId,omitempty"`
+	IsError      bool              `bson:"isError,omitempty"      json:"isError,omitempty"`
+	TokenUsage   *TokenUsage       `bson:"tokenUsage,omitempty"   json:"tokenUsage,omitempty"`
+	ReadPaths    []string          `bson:"readPaths,omitempty"    json:"readPaths,omitempty"`
+	WritePaths   []string          `bson:"writePaths,omitempty"   json:"writePaths,omitempty"`
+	Command      []string          `bson:"command,omitempty"      json:"command,omitempty"`
+	CommandText  string            `bson:"commandText,omitempty"  json:"commandText,omitempty"`
+	SearchQuery  string            `bson:"searchQuery,omitempty"  json:"searchQuery,omitempty"`
+	LinesAdded   int               `bson:"linesAdded,omitempty"   json:"linesAdded,omitempty"`
+	LinesRemoved int               `bson:"linesRemoved,omitempty" json:"linesRemoved,omitempty"`
+	Metadata     map[string]string `bson:"metadata,omitempty"     json:"metadata,omitempty"`
 }
 
 type TokenUsage struct {
