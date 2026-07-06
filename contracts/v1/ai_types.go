@@ -59,10 +59,24 @@ type TopicCuration struct {
 }
 
 type RepoContextSession struct {
-	FeedbackID  string   `json:"feedback_id"`
-	SessionID   string   `json:"session_id,omitempty"`
-	UserPrompts []string `json:"user_prompts,omitempty"`
-	EditedFiles []string `json:"edited_files,omitempty"`
+	FeedbackID   string   `json:"feedback_id"`
+	SessionID    string   `json:"session_id,omitempty"`
+	UserPrompts  []string `json:"user_prompts,omitempty"`
+	EditedFiles  []string `json:"edited_files,omitempty"`
+	DiffSnippets []string `json:"diff_snippets,omitempty"`
+}
+
+// TopicCurationSession is the per-feedback session evidence passed to the
+// topic curator: what the user actually asked, what the agent touched, and
+// which commands ran or failed.
+type TopicCurationSession struct {
+	FeedbackID     string   `json:"feedback_id"`
+	SessionID      string   `json:"session_id,omitempty"`
+	Prompts        []string `json:"prompts,omitempty"`
+	EditedFiles    []string `json:"edited_files,omitempty"`
+	ReadFiles      []string `json:"read_files,omitempty"`
+	Commands       []string `json:"commands,omitempty"`
+	FailedCommands []string `json:"failed_commands,omitempty"`
 }
 
 type RepoContextPatchEdit struct {

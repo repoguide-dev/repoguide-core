@@ -38,10 +38,20 @@ type RepoAnalysisSummary struct {
 }
 
 type RepoAnalysisSession struct {
-	ID           string               `json:"id"`
-	Title        string               `json:"title"`
-	Prompts      []string             `json:"prompts,omitempty"`
-	Interactions []SessionInteraction `json:"interactions,omitempty"`
+	ID           string                `json:"id"`
+	Title        string                `json:"title"`
+	Prompts      []string              `json:"prompts,omitempty"`
+	Interactions []SessionInteraction  `json:"interactions,omitempty"`
+	Commands     []RepoAnalysisCommand `json:"commands,omitempty"`
+	Timestamp    string                `json:"timestamp,omitempty"`
+}
+
+// RepoAnalysisCommand is a shell command observed in a session, with how often
+// it ran and how often it failed (linked tool_result with is_error).
+type RepoAnalysisCommand struct {
+	Text     string `json:"text"`
+	Runs     int    `json:"runs"`
+	Failures int    `json:"failures,omitempty"`
 }
 
 type SessionInteraction struct {

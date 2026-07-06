@@ -83,9 +83,10 @@ type TopicTests struct {
 }
 
 type TopicEvidence struct {
-	Sessions    int `bson:"sessions"     json:"sessions"`
-	EditedFiles int `bson:"edited_files" json:"edited_files"`
-	ReadFiles   int `bson:"read_files"   json:"read_files"`
+	Sessions    int    `bson:"sessions"     json:"sessions"`
+	EditedFiles int    `bson:"edited_files" json:"edited_files"`
+	ReadFiles   int    `bson:"read_files"   json:"read_files"`
+	LastActive  string `bson:"last_active,omitempty" json:"last_active,omitempty"` // date of most recent evidence session
 }
 
 type TopicContext struct {
