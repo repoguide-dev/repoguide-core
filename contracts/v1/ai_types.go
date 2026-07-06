@@ -77,6 +77,7 @@ type TopicCurationSession struct {
 	ReadFiles      []string `json:"read_files,omitempty"`
 	Commands       []string `json:"commands,omitempty"`
 	FailedCommands []string `json:"failed_commands,omitempty"`
+	DiffSnippets   []string `json:"diff_snippets,omitempty"`
 }
 
 type RepoContextPatchEdit struct {
