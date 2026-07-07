@@ -159,12 +159,13 @@ type MCPUnderstandTaskRequest struct {
 // (irrelevant for decoding). omitempty is preserved here so the cloud's
 // current wire bytes (which fields get omitted when empty) do not change.
 type MCPUnderstandTaskResult struct {
-	Status      string `json:"status"`
-	Explanation string `json:"explanation,omitempty"`
-	TopicID     string `json:"topic_id,omitempty"`
-	ContextText string `json:"context_text,omitempty"`
-	Reason      string `json:"reason,omitempty"`
-	Question    string `json:"question,omitempty"`
+	Status            string   `json:"status"`
+	Explanation       string   `json:"explanation,omitempty"`
+	TopicID           string   `json:"topic_id,omitempty"`
+	ContextText       string   `json:"context_text,omitempty"`
+	Reason            string   `json:"reason,omitempty"`
+	Question          string   `json:"question,omitempty"`
+	CandidateTopicIDs []string `json:"candidate_topic_ids,omitempty"`
 }
 
 // MCPCallCreateRequest is the request body for

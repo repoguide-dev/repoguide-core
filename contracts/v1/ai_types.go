@@ -15,10 +15,11 @@ type TopicSummary struct {
 }
 
 type SelectTopicResult struct {
-	TopicID  string
-	Status   string
-	Reason   string
-	Question string
+	TopicID           string
+	Status            string
+	Reason            string
+	Question          string
+	CandidateTopicIDs []string
 }
 
 type PriorSession struct {
