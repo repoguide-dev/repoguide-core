@@ -51,6 +51,14 @@ type MeResponse struct {
 	IsAdmin bool   `json:"is_admin"`
 }
 
+// AuthSessionResponse is the response body for login/register/refresh-style
+// auth endpoints that mint a bearer token for the current user.
+type AuthSessionResponse struct {
+	Token   string `json:"token"`
+	Email   string `json:"email"`
+	IsAdmin bool   `json:"is_admin,omitempty"`
+}
+
 // MCPTopicSummary is the shape of each entry in the "topics" array returned by
 // GET /api/repos/{repo_id}/mcp/topics.
 type MCPTopicSummary struct {
