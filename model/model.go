@@ -24,11 +24,12 @@ type Repo struct {
 // ── Sessions & Events ────────────────────────────────────────────────────────
 
 type RepoSessionEvents struct {
-	Agent     string         `bson:"agent"              json:"agent"`
-	ID        string         `bson:"id"                 json:"id"`
-	Name      string         `bson:"name,omitempty"     json:"name,omitempty"`
-	Events    []SessionEvent `bson:"events"             json:"events"`
-	UpdatedAt time.Time      `bson:"updatedAt"          json:"updatedAt"`
+	Agent        string         `bson:"agent"                   json:"agent"`
+	ID           string         `bson:"id"                      json:"id"`
+	Name         string         `bson:"name,omitempty"          json:"name,omitempty"`
+	SourceUserID string         `bson:"source_user_id,omitempty" json:"source_user_id,omitempty"`
+	Events       []SessionEvent `bson:"events"                  json:"events"`
+	UpdatedAt    time.Time      `bson:"updatedAt"               json:"updatedAt"`
 }
 
 type SessionEvent struct {
@@ -89,20 +90,33 @@ type TopicEvidence struct {
 	LastActive  string `bson:"last_active,omitempty" json:"last_active,omitempty"` // date of most recent evidence session
 }
 
+type TopicProvenance struct {
+	SourceType          string   `bson:"source_type,omitempty"             json:"source_type,omitempty"`
+	AddedBy             string   `bson:"added_by,omitempty"                json:"added_by,omitempty"`
+	SessionID           string   `bson:"session_id,omitempty"              json:"session_id,omitempty"`
+	FeedbackIDs         []string `bson:"feedback_ids,omitempty"            json:"feedback_ids,omitempty"`
+	SupportSessionCount int      `bson:"support_session_count,omitempty"   json:"support_session_count,omitempty"`
+	LastSupportedAt     string   `bson:"last_supported_at,omitempty"       json:"last_supported_at,omitempty"`
+	Status              string   `bson:"status,omitempty"                  json:"status,omitempty"`
+	Disabled            bool     `bson:"disabled,omitempty"                json:"disabled,omitempty"`
+}
+
 type TopicContext struct {
-	ID               string              `bson:"id"                         json:"id"`
-	Name             string              `bson:"name"                       json:"name"`
-	Summary          string              `bson:"summary"                    json:"summary"`
-	Confidence       float64             `bson:"confidence"                 json:"confidence"`
-	WhenToUse        []string            `bson:"when_to_use,omitempty"      json:"when_to_use,omitempty"`
-	PromptKeywords   []string            `bson:"prompt_keywords,omitempty"  json:"prompt_keywords,omitempty"`
-	StartHere        []TopicStartFile    `bson:"start_here,omitempty"       json:"start_here,omitempty"`
-	ImportantFiles   TopicImportantFiles `bson:"important_files"            json:"important_files"`
-	Tests            TopicTests          `bson:"tests"                      json:"tests"`
-	KnownWorkflows   []string            `bson:"known_workflows,omitempty"  json:"known_workflows,omitempty"`
-	AvoidWastingTime []string            `bson:"avoid_wasting_time,omitempty" json:"avoid_wasting_time,omitempty"`
-	RiskFlags        []string            `bson:"risk_flags,omitempty"       json:"risk_flags,omitempty"`
-	Evidence         TopicEvidence       `bson:"evidence"                   json:"evidence"`
+	ID                string                     `bson:"id"                         json:"id"`
+	Name              string                     `bson:"name"                       json:"name"`
+	Summary           string                     `bson:"summary"                    json:"summary"`
+	Confidence        float64                    `bson:"confidence"                 json:"confidence"`
+	WhenToUse         []string                   `bson:"when_to_use,omitempty"      json:"when_to_use,omitempty"`
+	PromptKeywords    []string                   `bson:"prompt_keywords,omitempty"  json:"prompt_keywords,omitempty"`
+	StartHere         []TopicStartFile           `bson:"start_here,omitempty"       json:"start_here,omitempty"`
+	ImportantFiles    TopicImportantFiles        `bson:"important_files"            json:"important_files"`
+	Tests             TopicTests                 `bson:"tests"                      json:"tests"`
+	KnownWorkflows    []string                   `bson:"known_workflows,omitempty"  json:"known_workflows,omitempty"`
+	AvoidWastingTime  []string                   `bson:"avoid_wasting_time,omitempty" json:"avoid_wasting_time,omitempty"`
+	RiskFlags         []string                   `bson:"risk_flags,omitempty"       json:"risk_flags,omitempty"`
+	Evidence          TopicEvidence              `bson:"evidence"                   json:"evidence"`
+	SectionProvenance map[string]TopicProvenance `bson:"section_provenance,omitempty" json:"section_provenance,omitempty"`
+	ItemProvenance    map[string]TopicProvenance `bson:"item_provenance,omitempty"    json:"item_provenance,omitempty"`
 }
 
 type FileSummary struct {

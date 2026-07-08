@@ -218,6 +218,22 @@ type MCPFeedbackRequest struct {
 	TopicID             string   `json:"topic_id,omitempty"`
 }
 
+// TopicEntryStatusUpdateRequest is the request body for
+// POST /api/repos/{repo_id}/topics/{topic_id}/entries/status.
+type TopicEntryStatusUpdateRequest struct {
+	Section string `json:"section"`
+	ItemKey string `json:"item_key,omitempty"`
+	Status  string `json:"status"`
+}
+
+// TopicEntryTextUpdateRequest is the request body for
+// POST /api/repos/{repo_id}/topics/{topic_id}/entries/edit.
+type TopicEntryTextUpdateRequest struct {
+	Section string `json:"section"`
+	ItemKey string `json:"item_key,omitempty"`
+	Text    string `json:"text"`
+}
+
 // Note: no conversion helper between MCPTopicContext and model.TopicContext is
 // provided here - the cloud side keeps encoding model.TopicContext directly
 // for GET .../mcp/topics/{topic_id} (see MISMATCH note above), and the CLI's
