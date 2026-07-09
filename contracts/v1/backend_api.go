@@ -45,10 +45,12 @@ type LimitsResponse struct {
 
 // MeResponse is the response body for GET /api/auth/me.
 type MeResponse struct {
-	Email   string `json:"email"`
-	UserID  string `json:"user_id"`
-	Plan    string `json:"plan"`
-	IsAdmin bool   `json:"is_admin"`
+	Email     string `json:"email"`
+	UserID    string `json:"user_id"`
+	Plan      string `json:"plan"`
+	IsAdmin   bool   `json:"is_admin"`
+	FirstName string `json:"first_name"`
+	LastName  string `json:"last_name"`
 }
 
 // AuthSessionResponse is the response body for login/register/refresh-style
