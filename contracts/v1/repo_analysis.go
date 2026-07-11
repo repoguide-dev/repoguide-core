@@ -21,6 +21,9 @@ type RepoAnalysisRepo struct {
 	Root        string `json:"root"`
 	RangeDays   int    `json:"range_days"`
 	GeneratedAt string `json:"generated_at"`
+	// TeamSynced is true when this repo is shared across a team (has a team_id),
+	// meaning sessions in the bundle may come from different developers.
+	TeamSynced bool `json:"team_synced,omitempty"`
 }
 
 type RepoAnalysisSummary struct {
