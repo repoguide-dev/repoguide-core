@@ -20,6 +20,7 @@ import (
 type RepoInfo struct {
 	RepoID     string    `json:"repo_id"`
 	RepoName   string    `json:"repo_name"`
+	TeamID     string    `json:"team_id,omitempty"`
 	LastSynced time.Time `json:"last_synced"`
 }
 
