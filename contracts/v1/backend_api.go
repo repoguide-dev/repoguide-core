@@ -2,6 +2,8 @@ package contracts
 
 import (
 	"time"
+
+	"github.com/repoguide/repoguide-core/model"
 )
 
 // This file holds the wire request/response types shared by repoguide-cli's
@@ -209,16 +211,18 @@ type MCPCallCreateResponse struct {
 // MCPFeedbackRequest is the request body for
 // POST /api/repos/{repo_id}/mcp/feedback.
 type MCPFeedbackRequest struct {
-	Task                string   `json:"task"`
-	Stars               int      `json:"stars"`
-	Helpfulness         string   `json:"helpfulness,omitempty"`
-	HelpedWith          []string `json:"helped_with,omitempty"`
-	Quote               string   `json:"quote,omitempty"`
-	MissingContext      string   `json:"missing_context,omitempty"`
-	WhatWentWrong       string   `json:"what_went_wrong,omitempty"`
-	WhatCouldBeImproved string   `json:"what_could_be_improved,omitempty"`
-	MCPCallID           string   `json:"mcp_call_id,omitempty"`
-	TopicID             string   `json:"topic_id,omitempty"`
+	Task                string                  `json:"task"`
+	Stars               int                     `json:"stars"`
+	Helpfulness         string                  `json:"helpfulness,omitempty"`
+	HelpedWith          []string                `json:"helped_with,omitempty"`
+	Quote               string                  `json:"quote,omitempty"`
+	MissingContext      string                  `json:"missing_context,omitempty"`
+	WhatWentWrong       string                  `json:"what_went_wrong,omitempty"`
+	WhatCouldBeImproved string                  `json:"what_could_be_improved,omitempty"`
+	AdviceEvaluation    *model.AdviceEvaluation `json:"advice_evaluation,omitempty"`
+	CandidateRule       *model.CandidateRule    `json:"candidate_rule,omitempty"`
+	MCPCallID           string                  `json:"mcp_call_id,omitempty"`
+	TopicID             string                  `json:"topic_id,omitempty"`
 }
 
 // TopicEntryStatusUpdateRequest is the request body for

@@ -1,6 +1,10 @@
 package contracts
 
-import "encoding/json"
+import (
+	"encoding/json"
+
+	"github.com/repoguide/repoguide-core/model"
+)
 
 type Usage struct {
 	Model        string
@@ -28,14 +32,15 @@ type PriorSession struct {
 }
 
 type TopicCurationSuggestion struct {
-	Kind                string          `json:"kind"`
-	TargetField         string          `json:"target_field"`
-	Path                string          `json:"path"`
-	Value               json.RawMessage `json:"value"`
-	Claim               string          `json:"claim"`
-	EvidenceFeedbackIDs []string        `json:"evidence_feedback_ids"`
-	Confidence          int             `json:"confidence"`
-	Reason              string          `json:"reason"`
+	Kind                string               `json:"kind"`
+	TargetField         string               `json:"target_field"`
+	Path                string               `json:"path"`
+	Value               json.RawMessage      `json:"value"`
+	Claim               string               `json:"claim"`
+	EvidenceFeedbackIDs []string             `json:"evidence_feedback_ids"`
+	Confidence          int                  `json:"confidence"`
+	Reason              string               `json:"reason"`
+	CandidateRule       *model.CandidateRule `json:"candidate_rule,omitempty"`
 }
 
 type TopicCurationSkip struct {
@@ -44,11 +49,12 @@ type TopicCurationSkip struct {
 }
 
 type TopicSuggestionDecision struct {
-	SuggestionID          string `json:"suggestion_id"`
-	Decision              string `json:"decision"`
-	MergeIntoSuggestionID string `json:"merge_into_suggestion_id,omitempty"`
-	Confidence            int    `json:"confidence"`
-	Reason                string `json:"reason"`
+	SuggestionID           string   `json:"suggestion_id"`
+	Decision               string   `json:"decision"`
+	MergeIntoSuggestionID  string   `json:"merge_into_suggestion_id,omitempty"`
+	SupportedByFeedbackIDs []string `json:"supported_by_feedback_ids,omitempty"`
+	Confidence             int      `json:"confidence"`
+	Reason                 string   `json:"reason"`
 }
 
 type TopicCuration struct {

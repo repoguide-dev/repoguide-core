@@ -205,6 +205,44 @@ type FeedbackClassification struct {
 	Confidence      string                   `bson:"confidence"                json:"confidence"`
 }
 
+// AdviceEvaluation is the coding agent's end-of-task assessment of the
+// repository guidance it received. The file lists are intentionally separate
+// from the prose so file-anchored guidance can be learned and retrieved
+// without trying to recover paths from free-form text.
+type AdviceEvaluation struct {
+	UsefulAdvice      string   `bson:"useful_advice,omitempty"      json:"useful_advice,omitempty"`
+	IncorrectAdvice   string   `bson:"incorrect_advice,omitempty"   json:"incorrect_advice,omitempty"`
+	UnnecessaryAdvice string   `bson:"unnecessary_advice,omitempty" json:"unnecessary_advice,omitempty"`
+	MissingAdvice     string   `bson:"missing_advice,omitempty"     json:"missing_advice,omitempty"`
+	UsefulFiles       []string `bson:"useful_files,omitempty"       json:"useful_files,omitempty"`
+	UnhelpfulFiles    []string `bson:"unhelpful_files,omitempty"    json:"unhelpful_files,omitempty"`
+}
+
+// CandidateRuleScope keeps a rule's retrieval scope broader than its file
+// anchors, so the rule can survive file moves and later be promoted from a
+// file-specific observation to a reusable topic or repository pattern.
+type CandidateRuleScope struct {
+	Symbols      []string `bson:"symbols,omitempty"       json:"symbols,omitempty"`
+	Directories  []string `bson:"directories,omitempty"   json:"directories,omitempty"`
+	TopicIDs     []string `bson:"topic_ids,omitempty"      json:"topic_ids,omitempty"`
+	TaskPatterns []string `bson:"task_patterns,omitempty" json:"task_patterns,omitempty"`
+}
+
+// CandidateRule is one reusable repository learning proposed by a completed
+// coding session. It is evidence, not active RepoGuide guidance: the curation
+// pipeline persists it as a pending suggestion until later evidence confirms
+// or rejects it.
+type CandidateRule struct {
+	Rule            string             `bson:"rule"                       json:"rule"`
+	AppliesWhen     string             `bson:"applies_when"               json:"applies_when"`
+	Evidence        string             `bson:"evidence"                   json:"evidence"`
+	Exceptions      string             `bson:"exceptions,omitempty"       json:"exceptions,omitempty"`
+	Confidence      int                `bson:"confidence"                 json:"confidence"`
+	ExpectedBenefit string             `bson:"expected_benefit"           json:"expected_benefit"`
+	AnchorFiles     []string           `bson:"anchor_files,omitempty"     json:"anchor_files,omitempty"`
+	Scope           CandidateRuleScope `bson:"scope,omitempty"            json:"scope,omitempty"`
+}
+
 func (c *FeedbackClassification) Validate() error {
 	if !validFeedbackKinds[c.Kind] {
 		return fmt.Errorf("invalid classification kind %q", c.Kind)
@@ -233,6 +271,8 @@ type MCPFeedback struct {
 	MCPCallID           string                  `bson:"mcp_call_id,omitempty"       json:"mcp_call_id,omitempty"`
 	WhatWentWrong       string                  `bson:"what_went_wrong,omitempty"   json:"what_went_wrong,omitempty"`
 	WhatCouldBeImproved string                  `bson:"what_could_be_improved,omitempty" json:"what_could_be_improved,omitempty"`
+	AdviceEvaluation    *AdviceEvaluation       `bson:"advice_evaluation,omitempty"       json:"advice_evaluation,omitempty"`
+	CandidateRule       *CandidateRule          `bson:"candidate_rule,omitempty"          json:"candidate_rule,omitempty"`
 	Classification      *FeedbackClassification `bson:"classification,omitempty"    json:"classification,omitempty"`
 	ProcessedAt         *time.Time              `bson:"processed_at,omitempty"      json:"processed_at,omitempty"`
 	ProcessingJobID     string                  `bson:"processing_job_id,omitempty" json:"processing_job_id,omitempty"`
@@ -314,4 +354,5 @@ type TopicPatchSuggestion struct {
 	EvidenceFeedbackIDs []string        `bson:"evidence_feedback_ids"  json:"evidence_feedback_ids"`
 	Confidence          int             `bson:"confidence"             json:"confidence"`
 	Reason              string          `bson:"reason"                 json:"reason"`
+	CandidateRule       *CandidateRule  `bson:"candidate_rule,omitempty" json:"candidate_rule,omitempty"`
 }
