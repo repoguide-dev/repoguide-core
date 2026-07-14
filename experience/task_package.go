@@ -15,6 +15,9 @@ import (
 
 const (
 	maxSimilarSessions = 20
+	// A single matching session is useful orientation, but not enough to infer
+	// a reusable workflow, warning, or scope boundary.
+	minimumValidatedAdviceSessions = 2
 	// A non-zero overlap is too permissive for broad topics such as auth. The
 	// session must share at least a quarter of the task vocabulary.
 	minimumSessionSimilarity = 0.25
@@ -98,9 +101,12 @@ func BuildTaskPackage(task, repoRoot string, topic model.TopicContext, sessions 
 // session history yet. Start files are curated topic metadata, rather than
 // task-similar session evidence, and are labelled as such in their source.
 func topicStartTaskPackage(task string, topic model.TopicContext) TaskPackage {
+	if topic.Evidence.Sessions == 0 {
+		return TaskPackage{Budget: BudgetForTask(1, false)}
+	}
 	files := rankedTopicFiles(task, topic)
-	if len(files) > 1 {
-		files = files[:1]
+	if len(files) > 3 {
+		files = files[:3]
 	}
 	pkg := TaskPackage{Files: files}
 	items := make([]AdviceItem, 0, len(files))
@@ -161,12 +167,15 @@ func behavioralTaskPackage(topic model.TopicContext, sessions []preparedSession)
 		}
 		return pi < pj
 	})
-	workflowPaths := make([]string, 0, min(3, len(workflow)))
-	for _, file := range workflow {
-		if len(workflowPaths) == 3 {
-			break
+	workflowPaths := []string(nil)
+	if len(sessions) >= minimumValidatedAdviceSessions {
+		workflowPaths = make([]string, 0, min(3, len(workflow)))
+		for _, file := range workflow {
+			if len(workflowPaths) == 3 {
+				break
+			}
+			workflowPaths = append(workflowPaths, file.Path)
 		}
-		workflowPaths = append(workflowPaths, file.Path)
 	}
 
 	avoid := lowSupportTopicFiles(topic, counts, len(sessions), files)
@@ -175,13 +184,17 @@ func behavioralTaskPackage(topic model.TopicContext, sessions []preparedSession)
 		warnings = append(warnings, fmt.Sprintf("Only %d similar implementation %s found; treat the pattern as tentative.", len(sessions), plural(len(sessions), "session", "sessions")))
 	}
 
+	boundary := ""
+	if len(sessions) >= minimumValidatedAdviceSessions {
+		boundary = expectedScope(topic, sessions)
+	}
 	pkg := TaskPackage{
 		SimilarSessions:    len(sessions),
 		Files:              files,
 		Avoid:              avoid,
 		Workflow:           workflowPaths,
 		Warnings:           warnings,
-		Boundary:           expectedScope(topic, sessions),
+		Boundary:           boundary,
 		MedianFiles:        median(fileTotals),
 		MedianToolCalls:    median(toolTotals),
 		Behavioral:         true,
@@ -196,9 +209,9 @@ func behavioralTaskPackage(topic model.TopicContext, sessions []preparedSession)
 func RenderTaskPackage(topic model.TopicContext, pkg TaskPackage) string {
 	var sb strings.Builder
 	if pkg.Behavioral {
-		sb.WriteString("Relevant prior changes\n")
+		fmt.Fprintf(&sb, "Observed in %d similar %s.\n", pkg.SimilarSessions, plural(pkg.SimilarSessions, "session", "sessions"))
 	} else {
-		sb.WriteString("No task-specific prior changes found.\n")
+		sb.WriteString("Topic matched, but this topic is newly established and has not yet accumulated enough consistent task-specific advice.\n")
 	}
 	if len(pkg.SelectedAdvice) > 0 {
 		for _, group := range adviceGroups {
@@ -214,6 +227,12 @@ func RenderTaskPackage(topic model.TopicContext, pkg TaskPackage) string {
 				}
 			}
 		}
+	}
+	if pkg.SimilarSessions > 0 && pkg.SimilarSessions < minimumValidatedAdviceSessions {
+		sb.WriteString("\nNo high-confidence task-specific workflow, warning, or scope guidance has been learned yet.\n")
+	}
+	if !pkg.Behavioral && len(pkg.SelectedAdvice) == 0 {
+		sb.WriteString("\nNo completed sessions currently provide enough evidence to recommend files or a workflow.\n")
 	}
 	return strings.TrimSpace(sb.String())
 }

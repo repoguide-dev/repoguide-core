@@ -64,7 +64,8 @@ func TestBuildTaskPackageMarksRareTopicFilesAsAvoid(t *testing.T) {
 
 func TestBuildTaskPackageFallsBackToTopicStartFiles(t *testing.T) {
 	topic := model.TopicContext{
-		Name: "Profiles",
+		Name:     "Profiles",
+		Evidence: model.TopicEvidence{Sessions: 1},
 		StartHere: []model.TopicStartFile{
 			{Path: "model/user.go"}, {Path: "api/users.go"}, {Path: "web/Profile.jsx"},
 		},
@@ -83,13 +84,45 @@ func TestBuildTaskPackageFallsBackToTopicStartFiles(t *testing.T) {
 	if pkg.Behavioral {
 		t.Fatalf("fallback package must not claim session behavior: %#v", pkg)
 	}
-	if len(pkg.SelectedAdvice) == 0 || pkg.SelectedAdvice[0].Kind != "start_file" || pkg.SelectedAdvice[0].Text != "model/user.go" {
-		t.Fatalf("fallback must return the topic's best start file: %#v", pkg.SelectedAdvice)
+	if len(pkg.SelectedAdvice) == 0 || pkg.SelectedAdvice[0].Kind != "start_file" {
+		t.Fatalf("fallback must return supported topic orientation: %#v", pkg.SelectedAdvice)
 	}
 	for _, item := range pkg.SelectedAdvice {
 		if item.Source != "topic_context" {
 			t.Fatalf("fallback must not emit unrelated topic guidance: %#v", pkg.SelectedAdvice)
 		}
+	}
+}
+
+func TestBuildTaskPackageWithOneSessionReturnsOrientationOnly(t *testing.T) {
+	topic := model.TopicContext{ID: "hooks", Name: "MCP Hooks", StartHere: []model.TopicStartFile{{Path: "internal/mcp/hooks.go"}}}
+	sessions := []model.RepoSessionEvents{{ID: "hook-session", Events: []model.SessionEvent{
+		{Kind: "prompt", Text: "install local mcp hook"},
+		{Kind: "tool_call", WritePaths: []string{"/repo/internal/mcp/hooks.go", "/repo/run-local.sh"}},
+		{Kind: "tool_call", CommandText: "./run-local.sh"},
+	}}}
+	pkg := BuildTaskPackage("install local mcp hook", "/repo", topic, sessions)
+	if !pkg.Behavioral || pkg.SimilarSessions != 1 || len(pkg.Workflow) != 0 || pkg.Boundary != "" || len(pkg.Avoid) != 0 {
+		t.Fatalf("one session must produce orientation only: %#v", pkg)
+	}
+	for _, advice := range pkg.CandidateAdvice {
+		if advice.Kind != "start_file" && advice.Kind != "test" {
+			t.Fatalf("one session emitted unsupported advice: %#v", advice)
+		}
+	}
+	if got := RenderTaskPackage(topic, pkg); !strings.Contains(got, "No high-confidence task-specific workflow") {
+		t.Fatalf("orientation response must explain its limit: %q", got)
+	}
+}
+
+func TestBuildTaskPackageWithoutEvidenceDoesNotInventOrientation(t *testing.T) {
+	topic := model.TopicContext{Name: "New Topic", StartHere: []model.TopicStartFile{{Path: "guessed.go"}}}
+	pkg := BuildTaskPackage("unrelated task", "", topic, nil)
+	if len(pkg.SelectedAdvice) != 0 {
+		t.Fatalf("topic without evidence must not recommend files: %#v", pkg.SelectedAdvice)
+	}
+	if got := RenderTaskPackage(topic, pkg); !strings.Contains(got, "No completed sessions currently provide enough evidence") {
+		t.Fatalf("no-evidence response must say so: %q", got)
 	}
 }
 
