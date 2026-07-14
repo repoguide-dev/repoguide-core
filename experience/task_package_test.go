@@ -62,7 +62,7 @@ func TestBuildTaskPackageMarksRareTopicFilesAsAvoid(t *testing.T) {
 	}
 }
 
-func TestBuildTaskPackageFallsBackToBoundedTopicData(t *testing.T) {
+func TestBuildTaskPackageDoesNotFallBackToTopicData(t *testing.T) {
 	topic := model.TopicContext{
 		Name: "Profiles",
 		StartHere: []model.TopicStartFile{
@@ -80,15 +80,8 @@ func TestBuildTaskPackageFallsBackToBoundedTopicData(t *testing.T) {
 		ScopeBoundaries: []model.TopicGuidanceItem{{ID: "scope-profile", Text: "Profile fields and display-name changes."}},
 	}
 	pkg := BuildTaskPackage("add first and last name to user profiles", "", topic, nil)
-	if pkg.Behavioral {
-		t.Fatal("expected bounded topic fallback")
-	}
-	if len(pkg.Files) != 3 || len(pkg.Workflow) != 1 || len(pkg.Warnings) != 2 || pkg.Boundary == "" {
-		t.Fatalf("unexpected fallback: %#v", pkg)
-	}
-	rendered := RenderTaskPackage(topic, pkg)
-	if len(pkg.SelectedAdvice) > pkg.Budget.MaxTotal || len([]rune(rendered)) > pkg.Budget.MaxCharacters+500 {
-		t.Fatalf("fallback exceeded selection budget: %#v\n%s", pkg.Budget, rendered)
+	if pkg.Behavioral || len(pkg.CandidateAdvice) != 0 || len(pkg.SelectedAdvice) != 0 {
+		t.Fatalf("runtime package must not fall back to parent-topic guidance: %#v", pkg)
 	}
 }
 
@@ -145,6 +138,57 @@ func TestFeedbackForTopicKeepsAdviceLearningScoped(t *testing.T) {
 	got := FeedbackForTopic("wanted", feedback)
 	if len(got) != 1 || got[0].Task != "matching" {
 		t.Fatalf("filtered feedback = %#v", got)
+	}
+}
+
+func TestFeedbackForSessionsKeepsCorrectionsInRetrievedPopulation(t *testing.T) {
+	feedback := []model.MCPFeedback{
+		{SessionID: "matched", Task: "matching correction"},
+		{SessionID: "other", Task: "unrelated correction"},
+	}
+	got := FeedbackForSessions([]string{"matched"}, feedback)
+	if len(got) != 1 || got[0].Task != "matching correction" {
+		t.Fatalf("filtered feedback = %#v", got)
+	}
+}
+
+func TestCandidatesCarryOnlyRetrievedSessionEvidence(t *testing.T) {
+	topic := model.TopicContext{ID: "auth", StartHere: []model.TopicStartFile{{Path: "web/App.jsx"}}, KnownWorkflows: []model.TopicGuidanceItem{{ID: "parent", Text: "Do unrelated profile work", Provenance: model.TopicProvenance{SessionID: "other"}}}}
+	sessions := []model.RepoSessionEvents{
+		{ID: "a", Events: []model.SessionEvent{{Kind: "prompt", Text: "hide login autofill"}, {Kind: "tool_call", WritePaths: []string{"/repo/web/App.jsx", "/repo/web/auth.test.jsx"}}, {Kind: "tool_call", CommandText: "npm test -- auth"}}},
+		{ID: "b", Events: []model.SessionEvent{{Kind: "prompt", Text: "hide login autofill"}, {Kind: "tool_call", WritePaths: []string{"/repo/web/App.jsx", "/repo/web/auth.test.jsx"}}, {Kind: "tool_call", CommandText: "npm test -- auth"}}},
+		{ID: "unrelated", Events: []model.SessionEvent{{Kind: "prompt", Text: "rotate oauth secrets"}, {Kind: "tool_call", WritePaths: []string{"/repo/auth/jwt.go"}}}},
+	}
+	pkg := BuildTaskPackage("hide login autofill", "/repo", topic, sessions)
+	if pkg.SimilarSessions != 2 || len(pkg.MatchingSessionIDs) != 2 {
+		t.Fatalf("retrieved sessions = %#v", pkg)
+	}
+	methods := map[string]bool{}
+	for _, candidate := range pkg.CandidateAdvice {
+		if candidate.Evidence.Population != 2 || candidate.Evidence.Support > candidate.Evidence.Population {
+			t.Fatalf("invalid candidate evidence: %#v", candidate)
+		}
+		for _, id := range candidate.Evidence.MatchingSessionIDs {
+			if id != "a" && id != "b" {
+				t.Fatalf("candidate leaked non-retrieved session %q: %#v", id, candidate)
+			}
+		}
+		if candidate.ID == "parent" || candidate.Source == "known_workflows" {
+			t.Fatalf("parent workflow leaked into runtime candidates: %#v", candidate)
+		}
+		methods[candidate.Evidence.ExtractionMethod] = true
+	}
+	for _, method := range []string{"edited_file", "coedited_sequence", "observed_command"} {
+		if !methods[method] {
+			t.Fatalf("missing session-derived %s candidate: %#v", method, pkg.CandidateAdvice)
+		}
+	}
+}
+
+func TestAdviceForClientOmitsInternalSessionIDs(t *testing.T) {
+	items := AdviceForClient([]AdviceItem{{ID: "a", Evidence: CandidateEvidence{MatchingSessionIDs: []string{"internal-session"}, Support: 1, Population: 2, ExtractionMethod: "edited_file"}}})
+	if len(items[0].Evidence.MatchingSessionIDs) != 0 || items[0].Evidence.Support != 1 || items[0].Evidence.Population != 2 {
+		t.Fatalf("client advice should retain aggregate evidence only: %#v", items)
 	}
 }
 

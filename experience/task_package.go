@@ -13,7 +13,12 @@ import (
 	"github.com/repoguide/repoguide-core/model"
 )
 
-const maxSimilarSessions = 20
+const (
+	maxSimilarSessions = 20
+	// A non-zero overlap is too permissive for broad topics such as auth. The
+	// session must share at least a quarter of the task vocabulary.
+	minimumSessionSimilarity = 0.25
+)
 
 type FilePattern struct {
 	Path     string
@@ -21,6 +26,7 @@ type FilePattern struct {
 }
 
 type AdviceItem = contracts.AdviceItem
+type CandidateEvidence = contracts.CandidateEvidence
 type TopicRoutingExample = contracts.TopicRoutingExample
 type SelectionBudget = contracts.SelectionBudget
 type AdviceSelectionResponse = contracts.AdviceSelectionResponse
@@ -29,18 +35,19 @@ type AdviceSelectionResponse = contracts.AdviceSelectionResponse
 // task. Topic prose is used only as a bounded fallback when session evidence is
 // unavailable.
 type TaskPackage struct {
-	SimilarSessions int
-	Files           []FilePattern
-	Avoid           []FilePattern
-	Workflow        []string
-	Warnings        []string
-	Boundary        string
-	MedianFiles     int
-	MedianToolCalls int
-	Behavioral      bool
-	CandidateAdvice []AdviceItem
-	SelectedAdvice  []AdviceItem
-	Budget          SelectionBudget
+	SimilarSessions    int
+	Files              []FilePattern
+	Avoid              []FilePattern
+	Workflow           []string
+	Warnings           []string
+	Boundary           string
+	MedianFiles        int
+	MedianToolCalls    int
+	Behavioral         bool
+	MatchingSessionIDs []string
+	CandidateAdvice    []AdviceItem
+	SelectedAdvice     []AdviceItem
+	Budget             SelectionBudget
 }
 
 type preparedSession struct {
@@ -66,7 +73,7 @@ func BuildTaskPackage(task, repoRoot string, topic model.TopicContext, sessions 
 			continue
 		}
 		promptScore := tokenSimilarity(taskTokens, sessionPromptTokens(session))
-		if promptScore == 0 {
+		if promptScore < minimumSessionSimilarity {
 			continue
 		}
 		p.score = promptScore + 0.25*overlap
@@ -82,7 +89,7 @@ func BuildTaskPackage(task, repoRoot string, topic model.TopicContext, sessions 
 		prepared = prepared[:maxSimilarSessions]
 	}
 	if len(prepared) == 0 {
-		return fallbackTaskPackage(task, topic)
+		return TaskPackage{}
 	}
 	return behavioralTaskPackage(topic, prepared)
 }
@@ -149,35 +156,18 @@ func behavioralTaskPackage(topic model.TopicContext, sessions []preparedSession)
 	}
 
 	pkg := TaskPackage{
-		SimilarSessions: len(sessions),
-		Files:           files,
-		Avoid:           avoid,
-		Workflow:        workflowPaths,
-		Warnings:        warnings,
-		Boundary:        expectedScope(topic, sessions),
-		MedianFiles:     median(fileTotals),
-		MedianToolCalls: median(toolTotals),
-		Behavioral:      true,
+		SimilarSessions:    len(sessions),
+		Files:              files,
+		Avoid:              avoid,
+		Workflow:           workflowPaths,
+		Warnings:           warnings,
+		Boundary:           expectedScope(topic, sessions),
+		MedianFiles:        median(fileTotals),
+		MedianToolCalls:    median(toolTotals),
+		Behavioral:         true,
+		MatchingSessionIDs: sessionIDs(sessions),
 	}
 	pkg.CandidateAdvice = buildCandidateAdvice(topic, pkg, sessions)
-	pkg.Budget = BudgetForTask(1, isCrossCutting(topic, pkg))
-	pkg.SelectedAdvice = defaultAdviceSelection(pkg.CandidateAdvice, pkg.Budget)
-	return pkg
-}
-
-func fallbackTaskPackage(task string, topic model.TopicContext) TaskPackage {
-	files := rankedTopicFiles(task, topic)
-	workflows := rankText(task, model.TopicGuidanceTexts(topic.KnownWorkflows), 1)
-	warnings := append([]string(nil), model.TopicGuidanceTexts(topic.AvoidWastingTime)...)
-	warnings = append(warnings, model.TopicGuidanceTexts(topic.RiskFlags)...)
-	warnings = rankText(task, warnings, 2)
-	boundaries := rankText(task, model.TopicGuidanceTexts(topic.ScopeBoundaries), 1)
-	boundary := ""
-	if len(boundaries) > 0 {
-		boundary = boundaries[0]
-	}
-	pkg := TaskPackage{Files: files, Workflow: workflows, Warnings: warnings, Boundary: boundary}
-	pkg.CandidateAdvice = buildCandidateAdvice(topic, pkg, nil)
 	pkg.Budget = BudgetForTask(1, isCrossCutting(topic, pkg))
 	pkg.SelectedAdvice = defaultAdviceSelection(pkg.CandidateAdvice, pkg.Budget)
 	return pkg
@@ -186,12 +176,9 @@ func fallbackTaskPackage(task string, topic model.TopicContext) TaskPackage {
 func RenderTaskPackage(topic model.TopicContext, pkg TaskPackage) string {
 	var sb strings.Builder
 	if pkg.Behavioral {
-		sb.WriteString("Repository experience\n")
-		fmt.Fprintf(&sb, "Task-similar sessions: %d\n", pkg.SimilarSessions)
+		sb.WriteString("Relevant prior changes\n")
 	} else {
-		sb.WriteString("Task package\n")
-		fmt.Fprintf(&sb, "Topic: %s\n", topic.Name)
-		sb.WriteString("No similar implementation session found; showing a bounded topic fallback.\n")
+		sb.WriteString("No task-specific prior changes found.\n")
 	}
 	if len(pkg.SelectedAdvice) > 0 {
 		for _, group := range adviceGroups {
@@ -208,11 +195,18 @@ func RenderTaskPackage(topic model.TopicContext, pkg TaskPackage) string {
 			}
 		}
 	}
-	if pkg.Behavioral {
-		sb.WriteString("\nMedian\n")
-		fmt.Fprintf(&sb, "%d files · %d tool calls\n", pkg.MedianFiles, pkg.MedianToolCalls)
-	}
 	return strings.TrimSpace(sb.String())
+}
+
+// AdviceForClient strips internal retrieval identifiers from MCP output. The
+// agent already knows its task; it needs the derived changed files, sequence,
+// and checks, not opaque historical session IDs.
+func AdviceForClient(items []AdviceItem) []AdviceItem {
+	public := append([]AdviceItem(nil), items...)
+	for i := range public {
+		public[i].Evidence.MatchingSessionIDs = nil
+	}
+	return public
 }
 
 // ApplyAdviceFeedback adjusts confidence using explicit item-level feedback.
@@ -273,6 +267,29 @@ func FeedbackForTopic(topicID string, feedback []model.MCPFeedback) []model.MCPF
 	return filtered
 }
 
+// FeedbackForSessions keeps explicit review corrections attached to the same
+// retrieved evidence population as the runtime candidates. Topic membership on
+// its own is intentionally insufficient: broad topics often contain several
+// unrelated task clusters.
+func FeedbackForSessions(sessionIDs []string, feedback []model.MCPFeedback) []model.MCPFeedback {
+	allowed := make(map[string]struct{}, len(sessionIDs))
+	for _, id := range sessionIDs {
+		if strings.TrimSpace(id) != "" {
+			allowed[id] = struct{}{}
+		}
+	}
+	if len(allowed) == 0 {
+		return nil
+	}
+	filtered := make([]model.MCPFeedback, 0, len(feedback))
+	for _, item := range feedback {
+		if _, ok := allowed[item.SessionID]; ok {
+			filtered = append(filtered, item)
+		}
+	}
+	return filtered
+}
+
 func adviceEvaluationMatches(item AdviceItem, feedbackText string, feedbackFiles []string) bool {
 	for _, file := range feedbackFiles {
 		if file == item.Text || contains(item.Files, file) {
@@ -326,9 +343,9 @@ func SetSelectionBudget(pkg TaskPackage, matchCount int) TaskPackage {
 
 func BudgetForTask(matchCount int, crossCutting bool) SelectionBudget {
 	if crossCutting || matchCount > 1 {
-		return SelectionBudget{MaxTotal: 15, MaxPerCategory: 4, MinDistinctKinds: 4, MaxCharacters: 6000}
+		return SelectionBudget{MaxTotal: 9, MaxPerCategory: 3, MinDistinctKinds: 3, MaxCharacters: 3200}
 	}
-	return SelectionBudget{MaxTotal: 10, MaxPerCategory: 3, MinDistinctKinds: 2, MaxCharacters: 4000}
+	return SelectionBudget{MaxTotal: 6, MaxPerCategory: 2, MinDistinctKinds: 2, MaxCharacters: 2400}
 }
 
 // BuildTopicRoutingExamples admits only feedback with a strong positive route
@@ -378,58 +395,144 @@ func buildCandidateAdvice(topic model.TopicContext, pkg TaskPackage, sessions []
 	// in the task-similar session set.
 	total := max(1, pkg.SimilarSessions)
 	for _, file := range pkg.Files {
-		items = append(items, newAdvice(topic.ID, "start_file", "history-file:"+file.Path,
-			file.Path, file.Sessions, max(1, pkg.SimilarSessions), "session_history", ""))
+		ids := sessionsEditing(file.Path, sessions)
+		items = append(items, withEvidence(newAdvice(topic.ID, "start_file", "history-file:"+file.Path,
+			file.Path, len(ids), total, "session_history", ""), ids, total, "edited_file"))
 	}
 	if len(pkg.Workflow) >= 2 {
 		support := coEditSupport(pkg.Workflow[:2], sessions)
-		items = append(items, newAdvice(topic.ID, "workflow", "coedit:"+strings.Join(pkg.Workflow[:2], "|"),
-			fmt.Sprintf("%s and %s are commonly edited together (%d/%d sessions).", pkg.Workflow[0], pkg.Workflow[1], support, max(1, pkg.SimilarSessions)), support, max(1, pkg.SimilarSessions), "session_history", ""))
+		ids := sessionsCoEditing(pkg.Workflow[:2], sessions)
+		items = append(items, withEvidence(newAdvice(topic.ID, "workflow", "coedit:"+strings.Join(pkg.Workflow[:2], "|"),
+			fmt.Sprintf("%s and %s are commonly edited together (%d/%d sessions).", pkg.Workflow[0], pkg.Workflow[1], support, total), support, total, "session_history", ""), ids, total, "coedited_sequence"))
 	}
+	items = append(items, testAdviceFromSessions(topic.ID, sessions, total)...)
 	for _, file := range pkg.Avoid {
 		support := max(1, pkg.SimilarSessions) - file.Sessions
-		items = append(items, newAdvice(topic.ID, "avoid", "avoid:"+file.Path,
-			fmt.Sprintf("%s is rarely involved in similar work (edited in %d/%d sessions).", file.Path, file.Sessions, max(1, pkg.SimilarSessions)), support, max(1, pkg.SimilarSessions), "session_history", ""))
+		ids := sessionsNotEditing(file.Path, sessions)
+		items = append(items, withEvidence(newAdvice(topic.ID, "avoid", "avoid:"+file.Path,
+			fmt.Sprintf("%s is rarely involved in similar work (edited in %d/%d sessions).", file.Path, file.Sessions, total), support, total, "session_history", ""), ids, total, "negative_file_presence"))
 	}
 	if pkg.Behavioral && pkg.Boundary != "" {
 		behaviorTotal := max(1, pkg.SimilarSessions)
 		support := scopeSupport(pkg.Boundary, behaviorTotal)
-		items = append(items, newAdvice(topic.ID, "scope_boundary", "scope:"+pkg.Boundary, pkg.Boundary+".", support, behaviorTotal, "session_history", ""))
+		ids := sessionsSupportingBoundary(pkg.Boundary, sessions)
+		items = append(items, withEvidence(newAdvice(topic.ID, "scope_boundary", "scope:"+pkg.Boundary, pkg.Boundary+".", support, behaviorTotal, "session_history", ""), ids, behaviorTotal, "scope_distribution"))
 	}
-
-	for _, file := range topic.StartHere {
-		items = append(items, topicPathAdvice(topic, "start_file", "start_here", file.Path))
-	}
-	for _, path := range topic.ImportantFiles.EditTargets {
-		items = append(items, topicPathAdvice(topic, "start_file", "important_files.edit_targets", path))
-	}
-	for _, path := range topic.ImportantFiles.ReferenceFiles {
-		items = append(items, topicPathAdvice(topic, "start_file", "important_files.reference_files", path))
-	}
-	for _, path := range topic.ImportantFiles.CrossCuttingFiles {
-		items = append(items, topicPathAdvice(topic, "start_file", "important_files.cross_cutting_files", path))
-	}
-	for _, path := range topic.ImportantFiles.TestFiles {
-		items = append(items, topicPathAdvice(topic, "test", "important_files.test_files", path))
-	}
-	for _, path := range topic.Tests.StartWith {
-		items = append(items, topicPathAdvice(topic, "test", "tests.start_with", path))
-	}
-	if strings.TrimSpace(topic.Tests.Signal) != "" {
-		items = append(items, newAdvice(topic.ID, "test", "tests.signal", topic.Tests.Signal, topic.Evidence.Sessions, total, "tests.signal", topic.Evidence.LastActive))
-	}
-	for _, command := range topic.Tests.Commands {
-		items = append(items, newAdvice(topic.ID, "test", "tests.command:"+command, command, topic.Evidence.Sessions, total, "tests.commands", topic.Evidence.LastActive))
-	}
-	// Topic guidance is retained in the topic record, but it is not emitted as
-	// production advice until it has item-level observed provenance. This
-	// quarantines legacy authored workflows and warnings.
-	items = append(items, guidanceAdvice(topic.KnownWorkflows, "workflow", "known_workflows", total)...)
-	items = append(items, guidanceAdvice(topic.AvoidWastingTime, "avoid", "avoid_wasting_time", total)...)
-	items = append(items, guidanceAdvice(topic.Tests.Notes, "test", "tests.notes", total)...)
-	items = append(items, guidanceAdvice(topic.ScopeBoundaries, "scope_boundary", "scope_boundaries", total)...)
-	items = append(items, guidanceAdvice(topic.RiskFlags, "risk", "risk_flags", total)...)
+	// Parent-topic guidance remains stored for curation, but runtime candidates
+	// are exclusively extracted from the retrieved session population.
 	return dedupeAdvice(items)
+}
+
+func withEvidence(item AdviceItem, ids []string, population int, method string) AdviceItem {
+	ids = dedupePaths(ids)
+	if len(ids) > population {
+		ids = ids[:population]
+	}
+	item.Support, item.Total = len(ids), population
+	item.Evidence = contracts.CandidateEvidence{MatchingSessionIDs: ids, Support: len(ids), Population: population, ExtractionMethod: method}
+	return item
+}
+
+func sessionIDs(sessions []preparedSession) []string {
+	ids := make([]string, 0, len(sessions))
+	for _, s := range sessions {
+		if s.log.ID != "" {
+			ids = append(ids, s.log.ID)
+		}
+	}
+	return dedupePaths(ids)
+}
+func sessionsEditing(path string, sessions []preparedSession) []string {
+	var ids []string
+	for _, s := range sessions {
+		if containsPath(s.edits, path) {
+			ids = append(ids, s.log.ID)
+		}
+	}
+	return ids
+}
+func sessionsNotEditing(path string, sessions []preparedSession) []string {
+	var ids []string
+	for _, s := range sessions {
+		if !containsPath(s.edits, path) {
+			ids = append(ids, s.log.ID)
+		}
+	}
+	return ids
+}
+func sessionsCoEditing(paths []string, sessions []preparedSession) []string {
+	var ids []string
+	for _, s := range sessions {
+		if len(sessionsCoEditingOne(paths, s)) == len(paths) {
+			ids = append(ids, s.log.ID)
+		}
+	}
+	return ids
+}
+func sessionsCoEditingOne(paths []string, session preparedSession) []string {
+	var found []string
+	for _, path := range paths {
+		if containsPath(session.edits, path) {
+			found = append(found, path)
+		}
+	}
+	return found
+}
+
+func sessionsSupportingBoundary(boundary string, sessions []preparedSession) []string {
+	wanted := ""
+	switch {
+	case strings.HasPrefix(boundary, "Frontend") || strings.HasPrefix(boundary, "Usually frontend"):
+		wanted = "frontend"
+	case strings.HasPrefix(boundary, "Backend") || strings.HasPrefix(boundary, "Usually backend"):
+		wanted = "backend"
+	}
+	if wanted == "" {
+		return sessionIDs(sessions)
+	}
+	ids := make([]string, 0, len(sessions))
+	for _, session := range sessions {
+		layers := map[string]bool{}
+		for _, path := range session.edits {
+			layers[fileLayer("", path)] = true
+		}
+		if len(layers) == 1 && layers[wanted] {
+			ids = append(ids, session.log.ID)
+		}
+	}
+	return ids
+}
+func containsPath(paths []string, target string) bool {
+	for _, path := range paths {
+		if samePath(path, target) {
+			return true
+		}
+	}
+	return false
+}
+
+func testAdviceFromSessions(topicID string, sessions []preparedSession, population int) []AdviceItem {
+	commandSessions := map[string][]string{}
+	for _, session := range sessions {
+		for _, event := range session.log.Events {
+			command := strings.TrimSpace(event.CommandText)
+			if command == "" && len(event.Command) > 0 {
+				command = strings.Join(event.Command, " ")
+			}
+			if command != "" {
+				commandSessions[command] = append(commandSessions[command], session.log.ID)
+			}
+		}
+	}
+	items := make([]AdviceItem, 0, len(commandSessions))
+	for command, ids := range commandSessions {
+		ids = dedupePaths(ids)
+		if len(ids) == 0 {
+			continue
+		}
+		items = append(items, withEvidence(newAdvice(topicID, "test", "session-command:"+command, command, len(ids), population, "session_history", ""), ids, population, "observed_command"))
+	}
+	return items
 }
 
 func newAdvice(topicID, kind, key, text string, support, total int, source, lastObserved string) AdviceItem {

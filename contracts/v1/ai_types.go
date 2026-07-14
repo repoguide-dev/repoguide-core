@@ -31,21 +31,32 @@ type TopicMatch struct {
 // AdviceItem is an immutable, evidence-backed observation. The LLM selector
 // may rank these items by ID, but may not author or rewrite their text.
 type AdviceItem struct {
-	ID                   string   `json:"id"`
-	Text                 string   `json:"text"`
-	Steps                []string `json:"steps,omitempty"`
-	Files                []string `json:"files,omitempty"`
-	Severity             string   `json:"severity,omitempty"`
-	Kind                 string   `json:"kind"`
-	Support              int      `json:"support"`
-	Total                int      `json:"total"`
-	Confidence           float64  `json:"confidence"`
-	HelpfulFeedback      int      `json:"helpful_feedback,omitempty"`
-	UnhelpfulFeedback    int      `json:"unhelpful_feedback,omitempty"`
-	HelpfulTextMatches   int      `json:"helpful_text_matches,omitempty"`
-	UnhelpfulTextMatches int      `json:"unhelpful_text_matches,omitempty"`
-	Source               string   `json:"source,omitempty"`
-	LastObservedAt       string   `json:"last_observed_at,omitempty"`
+	ID                   string            `json:"id"`
+	Text                 string            `json:"text"`
+	Steps                []string          `json:"steps,omitempty"`
+	Files                []string          `json:"files,omitempty"`
+	Severity             string            `json:"severity,omitempty"`
+	Kind                 string            `json:"kind"`
+	Support              int               `json:"support"`
+	Total                int               `json:"total"`
+	Confidence           float64           `json:"confidence"`
+	HelpfulFeedback      int               `json:"helpful_feedback,omitempty"`
+	UnhelpfulFeedback    int               `json:"unhelpful_feedback,omitempty"`
+	HelpfulTextMatches   int               `json:"helpful_text_matches,omitempty"`
+	UnhelpfulTextMatches int               `json:"unhelpful_text_matches,omitempty"`
+	Source               string            `json:"source,omitempty"`
+	LastObservedAt       string            `json:"last_observed_at,omitempty"`
+	Evidence             CandidateEvidence `json:"evidence,omitempty"`
+}
+
+// CandidateEvidence records the retrieved session population behind one
+// candidate. It keeps runtime guidance auditable and prevents topic-wide
+// aggregates from being presented as task-specific evidence.
+type CandidateEvidence struct {
+	MatchingSessionIDs []string `json:"matching_session_ids,omitempty"`
+	Support            int      `json:"support"`
+	Population         int      `json:"population"`
+	ExtractionMethod   string   `json:"extraction_method"`
 }
 
 // TopicRoutingExample is feedback-qualified prior routing evidence. It helps
