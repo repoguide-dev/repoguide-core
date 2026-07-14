@@ -13,22 +13,76 @@ type Usage struct {
 }
 
 type TopicSummary struct {
-	ID      string `json:"id"`
-	Name    string `json:"name"`
-	Summary string `json:"summary"`
+	ID             string   `json:"id"`
+	Name           string   `json:"name"`
+	Summary        string   `json:"summary"`
+	WhenToUse      []string `json:"when_to_use,omitempty"`
+	PromptKeywords []string `json:"prompt_keywords,omitempty"`
+}
+
+// TopicMatch is a task-to-topic relevance score. Confidence is calibrated to
+// the current task, not the topic's stored analysis confidence.
+type TopicMatch struct {
+	TopicID    string  `json:"topic_id"`
+	Name       string  `json:"name,omitempty"`
+	Confidence float64 `json:"confidence"`
+}
+
+// AdviceItem is an immutable, evidence-backed observation. The LLM selector
+// may rank these items by ID, but may not author or rewrite their text.
+type AdviceItem struct {
+	ID                   string   `json:"id"`
+	Text                 string   `json:"text"`
+	Steps                []string `json:"steps,omitempty"`
+	Files                []string `json:"files,omitempty"`
+	Severity             string   `json:"severity,omitempty"`
+	Kind                 string   `json:"kind"`
+	Support              int      `json:"support"`
+	Total                int      `json:"total"`
+	Confidence           float64  `json:"confidence"`
+	HelpfulFeedback      int      `json:"helpful_feedback,omitempty"`
+	UnhelpfulFeedback    int      `json:"unhelpful_feedback,omitempty"`
+	HelpfulTextMatches   int      `json:"helpful_text_matches,omitempty"`
+	UnhelpfulTextMatches int      `json:"unhelpful_text_matches,omitempty"`
+	Source               string   `json:"source,omitempty"`
+	LastObservedAt       string   `json:"last_observed_at,omitempty"`
+}
+
+// TopicRoutingExample is feedback-qualified prior routing evidence. It helps
+// the selector judge relevance; it is never implementation evidence.
+type TopicRoutingExample struct {
+	Task     string `json:"task"`
+	TopicID  string `json:"topic_id"`
+	Feedback string `json:"feedback"`
+	Reason   string `json:"reason,omitempty"`
+}
+
+type SelectionBudget struct {
+	MaxTotal         int `json:"max_total"`
+	MaxPerCategory   int `json:"max_per_category"`
+	MinDistinctKinds int `json:"min_distinct_kinds"`
+	MaxCharacters    int `json:"max_characters"`
+}
+
+// AdviceSelectionResponse contains IDs only. Category membership and budgets
+// are validated against the deterministic candidate set after the LLM call.
+type AdviceSelectionResponse struct {
+	StartFiles      []string `json:"start_files,omitempty"`
+	Workflows       []string `json:"workflows,omitempty"`
+	Avoid           []string `json:"avoid,omitempty"`
+	Tests           []string `json:"tests,omitempty"`
+	ScopeBoundaries []string `json:"scope_boundaries,omitempty"`
+	Risks           []string `json:"risks,omitempty"`
 }
 
 type SelectTopicResult struct {
 	TopicID           string
+	Confidence        float64
 	Status            string
 	Reason            string
 	Question          string
+	CandidateTopics   []TopicMatch
 	CandidateTopicIDs []string
-}
-
-type PriorSession struct {
-	Task  string
-	Files []string
 }
 
 type TopicCurationSuggestion struct {

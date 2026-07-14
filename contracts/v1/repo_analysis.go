@@ -5,6 +5,7 @@ type RepoAnalysisBundle struct {
 	Repo            RepoAnalysisRepo                `json:"repo"`
 	Summary         RepoAnalysisSummary             `json:"summary"`
 	Sessions        []RepoAnalysisSession           `json:"sessions"`
+	Sources         []RepoAnalysisSource            `json:"sources,omitempty"`
 	Files           []RepoAnalysisFile              `json:"files"`
 	PathAliases     map[string]string               `json:"path_aliases,omitempty"`
 	Subsystems      []RepoAnalysisSubsystem         `json:"subsystems"`
@@ -14,6 +15,19 @@ type RepoAnalysisBundle struct {
 	TestSignals     RepoAnalysisTestSignals         `json:"test_signals"`
 	Discoverability RepoAnalysisDiscoverability     `json:"discoverability"`
 	Docs            []RepoAnalysisDoc               `json:"docs"`
+}
+
+// RepoAnalysisSource is the compact input used for topic-candidate discovery.
+// SourceType is currently session or commit; pull_request is reserved for PR ingestion.
+type RepoAnalysisSource struct {
+	ID           string   `json:"id"`
+	SourceType   string   `json:"source_type"`
+	AuthorID     string   `json:"author_id,omitempty"`
+	Title        string   `json:"title,omitempty"`
+	Prompts      []string `json:"prompts,omitempty"`
+	ReadFiles    []string `json:"read_files,omitempty"`
+	ChangedFiles []string `json:"changed_files,omitempty"`
+	Timestamp    string   `json:"timestamp,omitempty"`
 }
 
 type RepoAnalysisRepo struct {
@@ -44,7 +58,11 @@ type RepoAnalysisSummary struct {
 type RepoAnalysisSession struct {
 	ID           string                `json:"id"`
 	Title        string                `json:"title"`
+	SourceType   string                `json:"source_type,omitempty"`
+	AuthorID     string                `json:"author_id,omitempty"`
 	Prompts      []string              `json:"prompts,omitempty"`
+	ReadFiles    []string              `json:"read_files,omitempty"`
+	EditedFiles  []string              `json:"edited_files,omitempty"`
 	Interactions []SessionInteraction  `json:"interactions,omitempty"`
 	Commands     []RepoAnalysisCommand `json:"commands,omitempty"`
 	Timestamp    string                `json:"timestamp,omitempty"`

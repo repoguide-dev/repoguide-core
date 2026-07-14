@@ -104,11 +104,13 @@ type MCPTopicImportantFiles struct {
 }
 
 type MCPTopicTests struct {
-	StartWith []string `json:"start_with,omitempty"`
-	Signal    string   `json:"signal,omitempty"`
-	Notes     []string `json:"notes,omitempty"`
-	Commands  []string `json:"commands,omitempty"`
+	StartWith []string               `json:"start_with,omitempty"`
+	Signal    string                 `json:"signal,omitempty"`
+	Notes     []MCPTopicGuidanceItem `json:"notes,omitempty"`
+	Commands  []string               `json:"commands,omitempty"`
 }
+
+type MCPTopicGuidanceItem = model.TopicGuidanceItem
 
 type MCPTopicContext struct {
 	ID               string                 `json:"id"`
@@ -117,12 +119,13 @@ type MCPTopicContext struct {
 	Confidence       float64                `json:"confidence"`
 	WhenToUse        []string               `json:"when_to_use,omitempty"`
 	PromptKeywords   []string               `json:"prompt_keywords,omitempty"`
+	ScopeBoundaries  []MCPTopicGuidanceItem `json:"scope_boundaries,omitempty"`
 	StartHere        []MCPTopicStartFile    `json:"start_here,omitempty"`
 	ImportantFiles   MCPTopicImportantFiles `json:"important_files"`
 	Tests            MCPTopicTests          `json:"tests"`
-	KnownWorkflows   []string               `json:"known_workflows,omitempty"`
-	AvoidWastingTime []string               `json:"avoid_wasting_time,omitempty"`
-	RiskFlags        []string               `json:"risk_flags,omitempty"`
+	KnownWorkflows   []MCPTopicGuidanceItem `json:"known_workflows,omitempty"`
+	AvoidWastingTime []MCPTopicGuidanceItem `json:"avoid_wasting_time,omitempty"`
+	RiskFlags        []MCPTopicGuidanceItem `json:"risk_flags,omitempty"`
 }
 
 // MCPSearchHeavyTarget is one entry of MCPSearchContext.SearchHeavyTargets.
@@ -172,13 +175,16 @@ type MCPUnderstandTaskRequest struct {
 // (irrelevant for decoding). omitempty is preserved here so the cloud's
 // current wire bytes (which fields get omitted when empty) do not change.
 type MCPUnderstandTaskResult struct {
-	Status            string   `json:"status"`
-	Explanation       string   `json:"explanation,omitempty"`
-	TopicID           string   `json:"topic_id,omitempty"`
-	ContextText       string   `json:"context_text,omitempty"`
-	Reason            string   `json:"reason,omitempty"`
-	Question          string   `json:"question,omitempty"`
-	CandidateTopicIDs []string `json:"candidate_topic_ids,omitempty"`
+	Status            string       `json:"status"`
+	Explanation       string       `json:"explanation,omitempty"`
+	TopicID           string       `json:"topic_id,omitempty"`
+	MatchConfidence   float64      `json:"match_confidence,omitempty"`
+	ContextText       string       `json:"context_text,omitempty"`
+	SelectedAdvice    []AdviceItem `json:"selected_advice,omitempty"`
+	Reason            string       `json:"reason,omitempty"`
+	Question          string       `json:"question,omitempty"`
+	CandidateTopics   []TopicMatch `json:"candidate_topics,omitempty"`
+	CandidateTopicIDs []string     `json:"candidate_topic_ids,omitempty"`
 }
 
 // MCPCallCreateRequest is the request body for

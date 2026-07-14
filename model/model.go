@@ -25,9 +25,11 @@ type Repo struct {
 
 type RepoSessionEvents struct {
 	Agent        string         `bson:"agent"                   json:"agent"`
+	SourceType   string         `bson:"source_type,omitempty"   json:"source_type,omitempty"`
 	ID           string         `bson:"id"                      json:"id"`
 	Name         string         `bson:"name,omitempty"          json:"name,omitempty"`
 	SourceUserID string         `bson:"source_user_id,omitempty" json:"source_user_id,omitempty"`
+	ChangedFiles []string       `bson:"changed_files,omitempty" json:"changed_files,omitempty"`
 	Events       []SessionEvent `bson:"events"                  json:"events"`
 	UpdatedAt    time.Time      `bson:"updatedAt"               json:"updatedAt"`
 }
@@ -69,6 +71,19 @@ type TopicStartFile struct {
 	Why  string `bson:"why"  json:"why"`
 }
 
+type TopicGuidanceItem struct {
+	ID             string          `bson:"id"                       json:"id"`
+	Text           string          `bson:"text"                     json:"text"`
+	Steps          []string        `bson:"steps,omitempty"          json:"steps,omitempty"`
+	Files          []string        `bson:"files,omitempty"          json:"files,omitempty"`
+	Severity       string          `bson:"severity,omitempty"       json:"severity,omitempty"`
+	Confidence     float64         `bson:"confidence"               json:"confidence"`
+	SupportCount   int             `bson:"support_count"            json:"support_count"`
+	SuccessCount   int             `bson:"success_count"            json:"success_count"`
+	LastObservedAt time.Time       `bson:"last_observed_at,omitempty" json:"last_observed_at,omitempty"`
+	Provenance     TopicProvenance `bson:"provenance"               json:"provenance"`
+}
+
 type TopicImportantFiles struct {
 	EditTargets       []string `bson:"edit_targets,omitempty"       json:"edit_targets,omitempty"`
 	ReferenceFiles    []string `bson:"reference_files,omitempty"    json:"reference_files,omitempty"`
@@ -77,17 +92,21 @@ type TopicImportantFiles struct {
 }
 
 type TopicTests struct {
-	StartWith []string `bson:"start_with,omitempty" json:"start_with,omitempty"`
-	Signal    string   `bson:"signal,omitempty"     json:"signal,omitempty"`
-	Notes     []string `bson:"notes,omitempty"      json:"notes,omitempty"`
-	Commands  []string `bson:"commands,omitempty"   json:"commands,omitempty"`
+	StartWith []string            `bson:"start_with,omitempty" json:"start_with,omitempty"`
+	Signal    string              `bson:"signal,omitempty"     json:"signal,omitempty"`
+	Notes     []TopicGuidanceItem `bson:"notes,omitempty"      json:"notes,omitempty"`
+	Commands  []string            `bson:"commands,omitempty"   json:"commands,omitempty"`
 }
 
 type TopicEvidence struct {
-	Sessions    int    `bson:"sessions"     json:"sessions"`
-	EditedFiles int    `bson:"edited_files" json:"edited_files"`
-	ReadFiles   int    `bson:"read_files"   json:"read_files"`
-	LastActive  string `bson:"last_active,omitempty" json:"last_active,omitempty"` // date of most recent evidence session
+	Sessions            int      `bson:"sessions"                       json:"sessions"`
+	EditedFiles         int      `bson:"edited_files"                   json:"edited_files"`
+	ReadFiles           int      `bson:"read_files"                     json:"read_files"`
+	LastActive          string   `bson:"last_active,omitempty"          json:"last_active,omitempty"` // date of most recent evidence session
+	SupportLevel        string   `bson:"support_level,omitempty"        json:"support_level,omitempty"`
+	SourceIDs           []string `bson:"source_ids,omitempty"           json:"source_ids,omitempty"`
+	RepeatedEditedFiles []string `bson:"repeated_edited_files,omitempty" json:"repeated_edited_files,omitempty"`
+	IndependentAuthors  int      `bson:"independent_authors,omitempty"  json:"independent_authors,omitempty"`
 }
 
 type TopicProvenance struct {
@@ -108,12 +127,13 @@ type TopicContext struct {
 	Confidence        float64                    `bson:"confidence"                 json:"confidence"`
 	WhenToUse         []string                   `bson:"when_to_use,omitempty"      json:"when_to_use,omitempty"`
 	PromptKeywords    []string                   `bson:"prompt_keywords,omitempty"  json:"prompt_keywords,omitempty"`
+	ScopeBoundaries   []TopicGuidanceItem        `bson:"scope_boundaries,omitempty" json:"scope_boundaries,omitempty"`
 	StartHere         []TopicStartFile           `bson:"start_here,omitempty"       json:"start_here,omitempty"`
 	ImportantFiles    TopicImportantFiles        `bson:"important_files"            json:"important_files"`
 	Tests             TopicTests                 `bson:"tests"                      json:"tests"`
-	KnownWorkflows    []string                   `bson:"known_workflows,omitempty"  json:"known_workflows,omitempty"`
-	AvoidWastingTime  []string                   `bson:"avoid_wasting_time,omitempty" json:"avoid_wasting_time,omitempty"`
-	RiskFlags         []string                   `bson:"risk_flags,omitempty"       json:"risk_flags,omitempty"`
+	KnownWorkflows    []TopicGuidanceItem        `bson:"known_workflows,omitempty"  json:"known_workflows,omitempty"`
+	AvoidWastingTime  []TopicGuidanceItem        `bson:"avoid_wasting_time,omitempty" json:"avoid_wasting_time,omitempty"`
+	RiskFlags         []TopicGuidanceItem        `bson:"risk_flags,omitempty"       json:"risk_flags,omitempty"`
 	Evidence          TopicEvidence              `bson:"evidence"                   json:"evidence"`
 	SectionProvenance map[string]TopicProvenance `bson:"section_provenance,omitempty" json:"section_provenance,omitempty"`
 	ItemProvenance    map[string]TopicProvenance `bson:"item_provenance,omitempty"    json:"item_provenance,omitempty"`
@@ -210,12 +230,14 @@ type FeedbackClassification struct {
 // from the prose so file-anchored guidance can be learned and retrieved
 // without trying to recover paths from free-form text.
 type AdviceEvaluation struct {
-	UsefulAdvice      string   `bson:"useful_advice,omitempty"      json:"useful_advice,omitempty"`
-	IncorrectAdvice   string   `bson:"incorrect_advice,omitempty"   json:"incorrect_advice,omitempty"`
-	UnnecessaryAdvice string   `bson:"unnecessary_advice,omitempty" json:"unnecessary_advice,omitempty"`
-	MissingAdvice     string   `bson:"missing_advice,omitempty"     json:"missing_advice,omitempty"`
-	UsefulFiles       []string `bson:"useful_files,omitempty"       json:"useful_files,omitempty"`
-	UnhelpfulFiles    []string `bson:"unhelpful_files,omitempty"    json:"unhelpful_files,omitempty"`
+	UsefulAdvice       string   `bson:"useful_advice,omitempty"        json:"useful_advice,omitempty"`
+	IncorrectAdvice    string   `bson:"incorrect_advice,omitempty"     json:"incorrect_advice,omitempty"`
+	UnnecessaryAdvice  string   `bson:"unnecessary_advice,omitempty"   json:"unnecessary_advice,omitempty"`
+	MissingAdvice      string   `bson:"missing_advice,omitempty"       json:"missing_advice,omitempty"`
+	UsefulFiles        []string `bson:"useful_files,omitempty"         json:"useful_files,omitempty"`
+	UnhelpfulFiles     []string `bson:"unhelpful_files,omitempty"      json:"unhelpful_files,omitempty"`
+	HelpfulAdviceIDs   []string `bson:"helpful_advice_ids,omitempty"   json:"helpful_advice_ids,omitempty"`
+	UnhelpfulAdviceIDs []string `bson:"unhelpful_advice_ids,omitempty" json:"unhelpful_advice_ids,omitempty"`
 }
 
 // CandidateRuleScope keeps a rule's retrieval scope broader than its file
