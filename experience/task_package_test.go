@@ -62,7 +62,7 @@ func TestBuildTaskPackageMarksRareTopicFilesAsAvoid(t *testing.T) {
 	}
 }
 
-func TestBuildTaskPackageDoesNotFallBackToTopicData(t *testing.T) {
+func TestBuildTaskPackageFallsBackToTopicStartFiles(t *testing.T) {
 	topic := model.TopicContext{
 		Name: "Profiles",
 		StartHere: []model.TopicStartFile{
@@ -80,8 +80,16 @@ func TestBuildTaskPackageDoesNotFallBackToTopicData(t *testing.T) {
 		ScopeBoundaries: []model.TopicGuidanceItem{{ID: "scope-profile", Text: "Profile fields and display-name changes."}},
 	}
 	pkg := BuildTaskPackage("add first and last name to user profiles", "", topic, nil)
-	if pkg.Behavioral || len(pkg.CandidateAdvice) != 0 || len(pkg.SelectedAdvice) != 0 {
-		t.Fatalf("runtime package must not fall back to parent-topic guidance: %#v", pkg)
+	if pkg.Behavioral {
+		t.Fatalf("fallback package must not claim session behavior: %#v", pkg)
+	}
+	if len(pkg.SelectedAdvice) == 0 || pkg.SelectedAdvice[0].Kind != "start_file" || pkg.SelectedAdvice[0].Text != "model/user.go" {
+		t.Fatalf("fallback must return the topic's best start file: %#v", pkg.SelectedAdvice)
+	}
+	for _, item := range pkg.SelectedAdvice {
+		if item.Source != "topic_context" {
+			t.Fatalf("fallback must not emit unrelated topic guidance: %#v", pkg.SelectedAdvice)
+		}
 	}
 }
 
@@ -192,19 +200,27 @@ func TestAdviceForClientOmitsInternalSessionIDs(t *testing.T) {
 	}
 }
 
-func TestSelectAdviceHonorsEmptySelectionAndRejectsInventedIDs(t *testing.T) {
+func TestSelectAdviceAlwaysKeepsStartFileAndRejectsInventedIDs(t *testing.T) {
 	pkg := TaskPackage{
-		CandidateAdvice: []AdviceItem{{ID: "known", Text: "App.tsx", Kind: "start_file", Confidence: 0.9}},
-		Budget:          BudgetForTask(1, false),
+		CandidateAdvice: []AdviceItem{
+			{ID: "known", Text: "App.tsx", Kind: "start_file", Confidence: 0.9},
+			{ID: "workflow", Text: "Run the relevant test", Kind: "workflow", Confidence: 0.8},
+		},
+		Budget: BudgetForTask(1, false),
 	}
 
 	empty := SelectAdvice(pkg, AdviceSelectionResponse{})
-	if len(empty.SelectedAdvice) != 0 {
-		t.Fatalf("empty selector response should remain empty: %#v", empty.SelectedAdvice)
+	if len(empty.SelectedAdvice) == 0 || empty.SelectedAdvice[0].ID != "known" {
+		t.Fatalf("empty selector response must fall back to a start file: %#v", empty.SelectedAdvice)
+	}
+
+	withoutStart := SelectAdvice(pkg, AdviceSelectionResponse{Workflows: []string{"workflow"}})
+	if len(withoutStart.SelectedAdvice) != 2 || withoutStart.SelectedAdvice[0].ID != "known" {
+		t.Fatalf("selector response without a start file must receive one: %#v", withoutStart.SelectedAdvice)
 	}
 
 	invented := SelectAdvice(pkg, AdviceSelectionResponse{StartFiles: []string{"invented"}})
-	if len(invented.SelectedAdvice) != 1 || invented.SelectedAdvice[0].ID != "known" {
+	if len(invented.SelectedAdvice) == 0 || invented.SelectedAdvice[0].ID != "known" {
 		t.Fatalf("invalid selector response should use deterministic fallback: %#v", invented.SelectedAdvice)
 	}
 }

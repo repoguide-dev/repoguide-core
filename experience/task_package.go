@@ -89,9 +89,29 @@ func BuildTaskPackage(task, repoRoot string, topic model.TopicContext, sessions 
 		prepared = prepared[:maxSimilarSessions]
 	}
 	if len(prepared) == 0 {
-		return TaskPackage{}
+		return topicStartTaskPackage(task, topic)
 	}
 	return behavioralTaskPackage(topic, prepared)
+}
+
+// topicStartTaskPackage keeps a matched topic useful when there is no close
+// session history yet. Start files are curated topic metadata, rather than
+// task-similar session evidence, and are labelled as such in their source.
+func topicStartTaskPackage(task string, topic model.TopicContext) TaskPackage {
+	files := rankedTopicFiles(task, topic)
+	if len(files) > 1 {
+		files = files[:1]
+	}
+	pkg := TaskPackage{Files: files}
+	items := make([]AdviceItem, 0, len(files))
+	for _, file := range files {
+		items = append(items, newAdvice(topic.ID, "start_file", "topic-file:"+file.Path,
+			file.Path, 0, 0, "topic_context", ""))
+	}
+	pkg.CandidateAdvice = dedupeAdvice(items)
+	pkg.Budget = BudgetForTask(1, isCrossCutting(topic, pkg))
+	pkg.SelectedAdvice = defaultAdviceSelection(pkg.CandidateAdvice, pkg.Budget)
+	return pkg
 }
 
 func behavioralTaskPackage(topic model.TopicContext, sessions []preparedSession) TaskPackage {
@@ -326,12 +346,37 @@ func adviceEvaluationMatches(item AdviceItem, feedbackText string, feedbackFiles
 // Unknown IDs, category mismatches, duplicates, and over-budget entries are
 // discarded. The selector never controls advice text.
 func SelectAdvice(pkg TaskPackage, selection AdviceSelectionResponse) TaskPackage {
-	requested := len(selectionIDs(selection))
 	pkg.SelectedAdvice = validateAdviceSelection(pkg.CandidateAdvice, selection, pkg.Budget)
-	if requested > 0 && len(pkg.SelectedAdvice) == 0 {
+	if len(pkg.SelectedAdvice) == 0 {
 		pkg.SelectedAdvice = defaultAdviceSelection(pkg.CandidateAdvice, pkg.Budget)
 	}
+	pkg.SelectedAdvice = ensureStartAdvice(pkg.CandidateAdvice, pkg.SelectedAdvice, pkg.Budget)
 	return pkg
+}
+
+// ensureStartAdvice makes "where to start" a stable part of every matched
+// topic response whenever the topic has a start-file candidate. The selector
+// may rank the remaining advice, but it cannot remove this baseline.
+func ensureStartAdvice(candidates, selected []AdviceItem, budget SelectionBudget) []AdviceItem {
+	if len(adviceOfKind(selected, "start_file")) > 0 {
+		return selected
+	}
+	start := defaultAdviceSelection(adviceOfKind(candidates, "start_file"), budget)
+	if len(start) == 0 {
+		return selected
+	}
+	if budget.MaxTotal <= 1 {
+		return start[:1]
+	}
+	out := make([]AdviceItem, 0, min(budget.MaxTotal, len(selected)+1))
+	out = append(out, start[0])
+	for _, item := range selected {
+		if len(out) == budget.MaxTotal {
+			break
+		}
+		out = append(out, item)
+	}
+	return out
 }
 
 func SetSelectionBudget(pkg TaskPackage, matchCount int) TaskPackage {
