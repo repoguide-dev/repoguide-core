@@ -98,26 +98,107 @@ func BuildTaskPackage(task, repoRoot string, topic model.TopicContext, sessions 
 }
 
 // topicStartTaskPackage keeps a matched topic useful when there is no close
-// session history yet. Start files are curated topic metadata, rather than
-// task-similar session evidence, and are labelled as such in their source.
+// session history yet. It surfaces the topic's highest-confidence curated
+// orientation — start files plus task-relevant workflow, risk, and scope
+// guidance — rather than returning empty. These come from curated topic
+// metadata, not task-similar session evidence, and are labelled as such in
+// their source; feedback degrades whatever proves unhelpful.
 func topicStartTaskPackage(task string, topic model.TopicContext) TaskPackage {
-	if topic.Evidence.Sessions == 0 {
-		return TaskPackage{Budget: BudgetForTask(1, false)}
-	}
 	files := rankedTopicFiles(task, topic)
 	if len(files) > 3 {
 		files = files[:3]
 	}
 	pkg := TaskPackage{Files: files}
-	items := make([]AdviceItem, 0, len(files))
+	items := make([]AdviceItem, 0, len(files)+8)
 	for _, file := range files {
 		items = append(items, newAdvice(topic.ID, "start_file", "topic-file:"+file.Path,
 			file.Path, 0, 0, "topic_context", ""))
 	}
+	items = append(items, curatedTopicAdvice(task, topic)...)
 	pkg.CandidateAdvice = dedupeAdvice(items)
 	pkg.Budget = BudgetForTask(1, isCrossCutting(topic, pkg))
 	pkg.SelectedAdvice = defaultAdviceSelection(pkg.CandidateAdvice, pkg.Budget)
 	return pkg
+}
+
+// curatedTopicAdvice surfaces curated guidance for a topic with no task-similar
+// sessions yet, highest-confidence first. Items are gated by task relevance so
+// guidance from unrelated work is not dumped;
+// support/total stay 0 so the curated confidence is a light prior that feedback
+// moves quickly.
+func curatedTopicAdvice(task string, topic model.TopicContext) []AdviceItem {
+	taskTokens := tokenSet(task)
+	sections := []struct {
+		kind    string
+		section string
+		items   []model.TopicGuidanceItem
+	}{
+		{"workflow", "known_workflows", topic.KnownWorkflows},
+		{"risk", "risk_flags", topic.RiskFlags},
+		{"scope_boundary", "scope_boundaries", topic.ScopeBoundaries},
+		{"avoid", "avoid_wasting_time", topic.AvoidWastingTime},
+	}
+	out := make([]AdviceItem, 0)
+	for _, s := range sections {
+		for _, item := range rankGuidanceByTask(taskTokens, s.items) {
+			out = append(out, curatedAdviceItem(topic.ID, s.kind, s.section, item))
+		}
+	}
+	return out
+}
+
+// rankGuidanceByTask keeps guidance items that share vocabulary with the task,
+// ordered by overlap then curated confidence, capped at two per section.
+func rankGuidanceByTask(taskTokens map[string]struct{}, items []model.TopicGuidanceItem) []model.TopicGuidanceItem {
+	type scored struct {
+		item    model.TopicGuidanceItem
+		overlap int
+	}
+	ranked := make([]scored, 0, len(items))
+	for _, item := range items {
+		if item.ID == "" && strings.TrimSpace(item.Text) == "" {
+			continue
+		}
+		text := strings.Join(append(append([]string{item.Text}, item.Steps...), item.Files...), " ")
+		overlap := 0
+		for token := range tokenSet(text) {
+			if _, ok := taskTokens[token]; ok {
+				overlap++
+			}
+		}
+		if overlap == 0 {
+			continue
+		}
+		ranked = append(ranked, scored{item: item, overlap: overlap})
+	}
+	sort.SliceStable(ranked, func(i, j int) bool {
+		if ranked[i].overlap != ranked[j].overlap {
+			return ranked[i].overlap > ranked[j].overlap
+		}
+		return ranked[i].item.Confidence > ranked[j].item.Confidence
+	})
+	if len(ranked) > 2 {
+		ranked = ranked[:2]
+	}
+	out := make([]model.TopicGuidanceItem, 0, len(ranked))
+	for _, s := range ranked {
+		out = append(out, s.item)
+	}
+	return out
+}
+
+func curatedAdviceItem(topicID, kind, section string, item model.TopicGuidanceItem) AdviceItem {
+	advice := newAdvice(topicID, kind, section+":"+item.Text, item.Text, 0, 0, "topic_context", "")
+	if item.ID != "" {
+		advice.ID = item.ID
+	}
+	if item.Confidence > 0 && item.Confidence < 1 {
+		advice.Confidence = item.Confidence
+	}
+	advice.Steps = append([]string(nil), item.Steps...)
+	advice.Files = append([]string(nil), item.Files...)
+	advice.Severity = item.Severity
+	return advice
 }
 
 func behavioralTaskPackage(topic model.TopicContext, sessions []preparedSession) TaskPackage {
@@ -210,8 +291,10 @@ func RenderTaskPackage(topic model.TopicContext, pkg TaskPackage) string {
 	var sb strings.Builder
 	if pkg.Behavioral {
 		fmt.Fprintf(&sb, "Observed in %d similar %s.\n", pkg.SimilarSessions, plural(pkg.SimilarSessions, "session", "sessions"))
+	} else if len(pkg.SelectedAdvice) > 0 {
+		sb.WriteString("No task-similar sessions yet; starting from the topic's curated orientation. This sharpens as sessions and feedback accumulate.\n")
 	} else {
-		sb.WriteString("Topic matched, but this topic is newly established and has not yet accumulated enough consistent task-specific advice.\n")
+		sb.WriteString("Topic matched, but this topic is newly established and has not yet accumulated consistent task-specific advice.\n")
 	}
 	if len(pkg.SelectedAdvice) > 0 {
 		for _, group := range adviceGroups {

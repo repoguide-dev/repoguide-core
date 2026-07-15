@@ -84,14 +84,31 @@ func TestBuildTaskPackageFallsBackToTopicStartFiles(t *testing.T) {
 	if pkg.Behavioral {
 		t.Fatalf("fallback package must not claim session behavior: %#v", pkg)
 	}
-	if len(pkg.SelectedAdvice) == 0 || pkg.SelectedAdvice[0].Kind != "start_file" {
-		t.Fatalf("fallback must return supported topic orientation: %#v", pkg.SelectedAdvice)
+	if len(adviceOfKind(pkg.SelectedAdvice, "start_file")) == 0 {
+		t.Fatalf("fallback must return topic start-file orientation: %#v", pkg.SelectedAdvice)
 	}
 	for _, item := range pkg.SelectedAdvice {
 		if item.Source != "topic_context" {
-			t.Fatalf("fallback must not emit unrelated topic guidance: %#v", pkg.SelectedAdvice)
+			t.Fatalf("fallback advice must be sourced from topic context: %#v", pkg.SelectedAdvice)
 		}
 	}
+	// Curated guidance that shares the task vocabulary is surfaced, highest
+	// confidence first; guidance from unrelated work is not.
+	if !hasAdviceText(pkg.SelectedAdvice, "Update the user model and its profile form.") {
+		t.Fatalf("relevant curated workflow must be surfaced: %#v", pkg.SelectedAdvice)
+	}
+	if hasAdviceText(pkg.SelectedAdvice, "Run every deployment check.") {
+		t.Fatalf("unrelated curated guidance must not be surfaced: %#v", pkg.SelectedAdvice)
+	}
+}
+
+func hasAdviceText(items []AdviceItem, text string) bool {
+	for _, item := range items {
+		if item.Text == text {
+			return true
+		}
+	}
+	return false
 }
 
 func TestBuildTaskPackageWithOneSessionReturnsOrientationOnly(t *testing.T) {
@@ -115,11 +132,24 @@ func TestBuildTaskPackageWithOneSessionReturnsOrientationOnly(t *testing.T) {
 	}
 }
 
-func TestBuildTaskPackageWithoutEvidenceDoesNotInventOrientation(t *testing.T) {
+func TestBuildTaskPackageWithoutEvidenceSurfacesCuratedStartFiles(t *testing.T) {
 	topic := model.TopicContext{Name: "New Topic", StartHere: []model.TopicStartFile{{Path: "guessed.go"}}}
 	pkg := BuildTaskPackage("unrelated task", "", topic, nil)
+	// A freshly matched topic starts from its curated orientation rather than
+	// returning empty; feedback degrades it if it proves unhelpful.
+	if len(adviceOfKind(pkg.SelectedAdvice, "start_file")) == 0 {
+		t.Fatalf("matched topic must surface curated start files: %#v", pkg.SelectedAdvice)
+	}
+	if got := RenderTaskPackage(topic, pkg); !strings.Contains(got, "curated orientation") {
+		t.Fatalf("no-session response must explain it is curated orientation: %q", got)
+	}
+}
+
+func TestBuildTaskPackageWithEmptyTopicReturnsNoAdvice(t *testing.T) {
+	topic := model.TopicContext{Name: "Empty Topic"}
+	pkg := BuildTaskPackage("unrelated task", "", topic, nil)
 	if len(pkg.SelectedAdvice) != 0 {
-		t.Fatalf("topic without evidence must not recommend files: %#v", pkg.SelectedAdvice)
+		t.Fatalf("topic with no curated content must not invent advice: %#v", pkg.SelectedAdvice)
 	}
 	if got := RenderTaskPackage(topic, pkg); !strings.Contains(got, "No completed sessions currently provide enough evidence") {
 		t.Fatalf("no-evidence response must say so: %q", got)
