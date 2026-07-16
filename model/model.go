@@ -255,11 +255,13 @@ type CandidateRuleScope struct {
 // pipeline persists it as a pending suggestion until later evidence confirms
 // or rejects it.
 type CandidateRule struct {
-	Rule            string             `bson:"rule"                       json:"rule"`
-	AppliesWhen     string             `bson:"applies_when"               json:"applies_when"`
-	Evidence        string             `bson:"evidence"                   json:"evidence"`
-	Exceptions      string             `bson:"exceptions,omitempty"       json:"exceptions,omitempty"`
-	Confidence      int                `bson:"confidence"                 json:"confidence"`
+	Rule        string `bson:"rule"                       json:"rule"`
+	AppliesWhen string `bson:"applies_when"               json:"applies_when"`
+	Evidence    string `bson:"evidence"                   json:"evidence"`
+	Exceptions  string `bson:"exceptions,omitempty"       json:"exceptions,omitempty"`
+	// Confidence is a normalized 0–1 estimate, matching the rest of the
+	// repository guidance and MCP-facing confidence fields.
+	Confidence      float64            `bson:"confidence"                 json:"confidence"`
 	ExpectedBenefit string             `bson:"expected_benefit"           json:"expected_benefit"`
 	AnchorFiles     []string           `bson:"anchor_files,omitempty"     json:"anchor_files,omitempty"`
 	Scope           CandidateRuleScope `bson:"scope,omitempty"            json:"scope,omitempty"`
