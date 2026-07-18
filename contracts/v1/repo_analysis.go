@@ -8,6 +8,7 @@ type RepoAnalysisBundle struct {
 	Sources         []RepoAnalysisSource            `json:"sources,omitempty"`
 	Files           []RepoAnalysisFile              `json:"files"`
 	PathAliases     map[string]string               `json:"path_aliases,omitempty"`
+	AllFiles        []string                        `json:"all_files,omitempty"`
 	Subsystems      []RepoAnalysisSubsystem         `json:"subsystems"`
 	SeenWithGroups  []RepoAnalysisRelation          `json:"seen_with_groups"`
 	Relationships   []RepoAnalysisRelationshipGroup `json:"relationships"`
