@@ -49,6 +49,7 @@ type RepoAnalysisSummary struct {
 	ContextTokens        int64   `json:"context_tokens"`
 	TotalTokens          int64   `json:"total_tokens"`
 	CostUSD              float64 `json:"cost_usd"`
+	InputCostUSD         float64 `json:"input_cost_usd"`
 	AvgPromptsPerSession float64 `json:"avg_prompts_per_session"`
 	AvgReadsPerSession   float64 `json:"avg_reads_per_session"`
 	AvgEditsPerSession   float64 `json:"avg_edits_per_session"`
