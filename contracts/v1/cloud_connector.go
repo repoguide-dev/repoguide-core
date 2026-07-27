@@ -38,8 +38,10 @@ type CloudConnector interface {
 	GetMCPTopicContext(repoID, topicID string) (*MCPTopicContext, error)
 	// GetMCPUnderstandTask asks the backend to route a task description to the
 	// relevant topic(s) (POST /api/repos/{repoID}/mcp/understand-task). Served
-	// locally for local-mode repos.
-	GetMCPUnderstandTask(repoID, task, topicID string, prompts []string) (*MCPUnderstandTaskResult, error)
+	// locally for local-mode repos. knownFiles is the caller's git-computed
+	// file listing for its configured branch, used to filter stale paths out
+	// of the response (see MCPUnderstandTaskRequest.KnownFiles).
+	GetMCPUnderstandTask(repoID, task, topicID string, prompts []string, knownFiles []string) (*MCPUnderstandTaskResult, error)
 	// CreateMCPCall records that an MCP tool call happened
 	// (POST /api/repos/{repoID}/mcp-calls). Served locally for local-mode repos.
 	CreateMCPCall(repoID string, req MCPCallCreateRequest) (*MCPCallCreateResponse, error)

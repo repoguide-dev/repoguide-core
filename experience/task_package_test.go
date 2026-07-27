@@ -288,6 +288,58 @@ func TestSelectAdviceAlwaysKeepsStartFileAndRejectsInventedIDs(t *testing.T) {
 	}
 }
 
+func TestFilterTopicToKnownFiles(t *testing.T) {
+	topic := model.TopicContext{
+		StartHere: []model.TopicStartFile{{Path: "keep.go"}, {Path: "gone.go"}},
+		ImportantFiles: model.TopicImportantFiles{
+			EditTargets: []string{"keep.go", "gone.go"},
+		},
+		Evidence: model.TopicEvidence{RepeatedEditedFiles: []string{"keep.go", "gone.go"}},
+		RiskFlags: []model.TopicGuidanceItem{
+			{ID: "r1", Text: "careful here", Files: []string{"keep.go", "gone.go"}},
+		},
+	}
+
+	if got := FilterTopicToKnownFiles(topic, nil); len(got.StartHere) != 2 {
+		t.Fatalf("nil known should skip filtering, got %#v", got.StartHere)
+	}
+
+	filtered := FilterTopicToKnownFiles(topic, map[string]bool{"keep.go": true})
+	if len(filtered.StartHere) != 1 || filtered.StartHere[0].Path != "keep.go" {
+		t.Fatalf("StartHere = %#v, want only keep.go", filtered.StartHere)
+	}
+	if len(filtered.ImportantFiles.EditTargets) != 1 || filtered.ImportantFiles.EditTargets[0] != "keep.go" {
+		t.Fatalf("EditTargets = %#v, want only keep.go", filtered.ImportantFiles.EditTargets)
+	}
+	if len(filtered.Evidence.RepeatedEditedFiles) != 1 {
+		t.Fatalf("RepeatedEditedFiles = %#v, want only keep.go", filtered.Evidence.RepeatedEditedFiles)
+	}
+	if len(filtered.RiskFlags) != 1 || len(filtered.RiskFlags[0].Files) != 1 || filtered.RiskFlags[0].Files[0] != "keep.go" {
+		t.Fatalf("RiskFlags = %#v, want files trimmed to keep.go", filtered.RiskFlags)
+	}
+}
+
+func TestFilterTaskPackageFiles(t *testing.T) {
+	pkg := TaskPackage{
+		Files: []FilePattern{{Path: "keep.go", Sessions: 3}, {Path: "gone.go", Sessions: 1}},
+		CandidateAdvice: []AdviceItem{
+			{ID: "a", Files: []string{"keep.go", "gone.go"}},
+		},
+	}
+
+	if got := FilterTaskPackageFiles(pkg, nil); len(got.Files) != 2 {
+		t.Fatalf("nil known should skip filtering, got %#v", got.Files)
+	}
+
+	filtered := FilterTaskPackageFiles(pkg, map[string]bool{"keep.go": true})
+	if len(filtered.Files) != 1 || filtered.Files[0].Path != "keep.go" {
+		t.Fatalf("Files = %#v, want only keep.go", filtered.Files)
+	}
+	if len(filtered.CandidateAdvice[0].Files) != 1 || filtered.CandidateAdvice[0].Files[0] != "keep.go" {
+		t.Fatalf("CandidateAdvice[0].Files = %#v, want only keep.go", filtered.CandidateAdvice[0].Files)
+	}
+}
+
 func session(prompt string, files []string, toolCalls int) model.RepoSessionEvents {
 	events := []model.SessionEvent{{Kind: "prompt", Text: prompt}}
 	for i := 0; i < toolCalls-1; i++ {

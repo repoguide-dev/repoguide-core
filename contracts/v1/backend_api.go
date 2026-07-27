@@ -23,6 +23,7 @@ type RepoInfo struct {
 	RepoID     string    `json:"repo_id"`
 	RepoName   string    `json:"repo_name"`
 	TeamID     string    `json:"team_id,omitempty"`
+	Branch     string    `json:"branch,omitempty"`
 	LastSynced time.Time `json:"last_synced"`
 }
 
@@ -164,6 +165,13 @@ type MCPUnderstandTaskRequest struct {
 	Task    string   `json:"task"`
 	TopicID string   `json:"topic_id"`
 	Prompts []string `json:"prompts"`
+	// KnownFiles, when set, is the caller's own git-computed file listing for
+	// its configured branch. It exists because file paths surfaced from
+	// stored topic/session data can go stale (renamed, moved, deleted); the
+	// backend has no filesystem access, so it can only filter to "known
+	// good" paths if the caller supplies them. Nil means "unknown branch" -
+	// filtering is skipped.
+	KnownFiles []string `json:"known_files,omitempty"`
 }
 
 // MCPUnderstandTaskResult is the response body for

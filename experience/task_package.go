@@ -97,6 +97,93 @@ func BuildTaskPackage(task, repoRoot string, topic model.TopicContext, sessions 
 	return behavioralTaskPackage(topic, prepared)
 }
 
+// FilterTopicToKnownFiles trims every file-path field on a topic down to
+// paths present in known, so callers don't surface stale paths (renamed,
+// moved, deleted) that were true when the topic was learned but no longer
+// exist on the branch being worked on. known == nil means "the caller
+// couldn't determine the branch's file listing" - skip filtering rather than
+// wiping out every path.
+func FilterTopicToKnownFiles(topic model.TopicContext, known map[string]bool) model.TopicContext {
+	if known == nil {
+		return topic
+	}
+	startHere := make([]model.TopicStartFile, 0, len(topic.StartHere))
+	for _, f := range topic.StartHere {
+		if known[f.Path] {
+			startHere = append(startHere, f)
+		}
+	}
+	topic.StartHere = startHere
+	topic.ImportantFiles.EditTargets = filterKnownPaths(topic.ImportantFiles.EditTargets, known)
+	topic.ImportantFiles.ReferenceFiles = filterKnownPaths(topic.ImportantFiles.ReferenceFiles, known)
+	topic.ImportantFiles.TestFiles = filterKnownPaths(topic.ImportantFiles.TestFiles, known)
+	topic.ImportantFiles.CrossCuttingFiles = filterKnownPaths(topic.ImportantFiles.CrossCuttingFiles, known)
+	topic.Tests.StartWith = filterKnownPaths(topic.Tests.StartWith, known)
+	topic.Evidence.RepeatedEditedFiles = filterKnownPaths(topic.Evidence.RepeatedEditedFiles, known)
+	topic.ScopeBoundaries = filterGuidanceItemFiles(topic.ScopeBoundaries, known)
+	topic.KnownWorkflows = filterGuidanceItemFiles(topic.KnownWorkflows, known)
+	topic.AvoidWastingTime = filterGuidanceItemFiles(topic.AvoidWastingTime, known)
+	topic.RiskFlags = filterGuidanceItemFiles(topic.RiskFlags, known)
+	topic.Tests.Notes = filterGuidanceItemFiles(topic.Tests.Notes, known)
+	return topic
+}
+
+// FilterTaskPackageFiles trims the file paths surfaced by a built TaskPackage
+// (both the ranked file list and every advice item's evidence files) down to
+// known. Unlike topic fields, these paths largely come from session edit
+// history rather than curated topic data, so they need their own pass. known
+// == nil skips filtering.
+func FilterTaskPackageFiles(pkg TaskPackage, known map[string]bool) TaskPackage {
+	if known == nil {
+		return pkg
+	}
+	pkg.Files = filterKnownFilePatterns(pkg.Files, known)
+	pkg.Avoid = filterKnownFilePatterns(pkg.Avoid, known)
+	pkg.CandidateAdvice = filterAdviceFiles(pkg.CandidateAdvice, known)
+	pkg.SelectedAdvice = filterAdviceFiles(pkg.SelectedAdvice, known)
+	return pkg
+}
+
+func filterKnownPaths(paths []string, known map[string]bool) []string {
+	if len(paths) == 0 {
+		return paths
+	}
+	out := make([]string, 0, len(paths))
+	for _, p := range paths {
+		if known[p] {
+			out = append(out, p)
+		}
+	}
+	return out
+}
+
+func filterKnownFilePatterns(files []FilePattern, known map[string]bool) []FilePattern {
+	if len(files) == 0 {
+		return files
+	}
+	out := make([]FilePattern, 0, len(files))
+	for _, f := range files {
+		if known[f.Path] {
+			out = append(out, f)
+		}
+	}
+	return out
+}
+
+func filterGuidanceItemFiles(items []model.TopicGuidanceItem, known map[string]bool) []model.TopicGuidanceItem {
+	for i := range items {
+		items[i].Files = filterKnownPaths(items[i].Files, known)
+	}
+	return items
+}
+
+func filterAdviceFiles(items []AdviceItem, known map[string]bool) []AdviceItem {
+	for i := range items {
+		items[i].Files = filterKnownPaths(items[i].Files, known)
+	}
+	return items
+}
+
 // topicStartTaskPackage keeps a matched topic useful when there is no close
 // session history yet. It surfaces the topic's highest-confidence curated
 // orientation — start files plus task-relevant workflow, risk, and scope
