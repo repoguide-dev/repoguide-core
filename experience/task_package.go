@@ -379,7 +379,7 @@ func RenderTaskPackage(topic model.TopicContext, pkg TaskPackage) string {
 	if pkg.Behavioral {
 		fmt.Fprintf(&sb, "Observed in %d similar %s.\n", pkg.SimilarSessions, plural(pkg.SimilarSessions, "session", "sessions"))
 	} else if len(pkg.SelectedAdvice) > 0 {
-		sb.WriteString("No task-similar sessions yet; starting from the topic's curated orientation. This sharpens as sessions and feedback accumulate.\n")
+		sb.WriteString("No task-similar sessions yet; starting from the topic's curated orientation.\n")
 	} else {
 		sb.WriteString("Topic matched, but this topic is newly established and has not yet accumulated consistent task-specific advice.\n")
 	}
@@ -391,9 +391,18 @@ func RenderTaskPackage(topic model.TopicContext, pkg TaskPackage) string {
 			}
 			fmt.Fprintf(&sb, "\n%s\n", group.heading)
 			for _, advice := range items {
-				fmt.Fprintf(&sb, "- %s\n", advice.Text)
+				fmt.Fprintf(&sb, "- %s", advice.Text)
+				if advice.Severity != "" {
+					fmt.Fprintf(&sb, " [%s]", advice.Severity)
+				}
+				sb.WriteByte('\n')
 				for _, step := range advice.Steps {
 					fmt.Fprintf(&sb, "  - %s\n", step)
+				}
+				// ponytail: only files the text does not already name; repeating
+				// a path the sentence just mentioned is pure token cost.
+				if extra := unmentionedFiles(advice); len(extra) > 0 {
+					fmt.Fprintf(&sb, "  Files: %s\n", strings.Join(extra, ", "))
 				}
 			}
 		}
@@ -874,6 +883,17 @@ func validateAdviceSelection(items []AdviceItem, selection AdviceSelectionRespon
 		}
 	}
 	return selected
+}
+
+func unmentionedFiles(item AdviceItem) []string {
+	body := item.Text + "\n" + strings.Join(item.Steps, "\n")
+	out := make([]string, 0, len(item.Files))
+	for _, file := range item.Files {
+		if !strings.Contains(body, file) {
+			out = append(out, file)
+		}
+	}
+	return out
 }
 
 func adviceCharacters(item AdviceItem) int {
