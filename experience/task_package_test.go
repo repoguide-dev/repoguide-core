@@ -413,3 +413,73 @@ func TestBuildTaskPackageScoresSessionsByClosestPrompt(t *testing.T) {
 		t.Fatalf("behavioral=%v sessions=%d, want true/3 - later unrelated turns must not bury a matching prompt", pkg.Behavioral, pkg.SimilarSessions)
 	}
 }
+
+// Behavioral packages used to build candidates purely from the session
+// population, so a topic that gained enough matching sessions silently lost
+// its curated warnings - the opposite of what more evidence should do.
+func TestBehavioralPackageKeepsCuratedWarnings(t *testing.T) {
+	topic := model.TopicContext{
+		Name:      "Integration Tests",
+		StartHere: []model.TopicStartFile{{Path: "integration-test/run-all.sh"}},
+		AvoidWastingTime: []model.TopicGuidanceItem{
+			{ID: "avoid-gitmv", Text: "git mv team-e2e integration-test/team-e2e failed twice; use plain mv instead."},
+		},
+	}
+	var sessions []model.RepoSessionEvents
+	for i := 0; i < 3; i++ {
+		sessions = append(sessions, session("move team-e2e into integration-test and wire it into run-all.sh",
+			[]string{"integration-test/run-all.sh"}, 9+i))
+	}
+
+	pkg := BuildTaskPackage("move team-e2e into integration-test and wire it into run-all.sh", "/repo", topic, sessions)
+	if !pkg.Behavioral {
+		t.Fatalf("expected a behavioral package, got %#v", pkg)
+	}
+	if !hasAdviceText(pkg.CandidateAdvice, "git mv team-e2e integration-test/team-e2e failed twice; use plain mv instead.") {
+		t.Fatalf("curated warning must survive session matching: %#v", pkg.CandidateAdvice)
+	}
+	// Session evidence still outranks it.
+	if pkg.CandidateAdvice[0].Source != "session_history" {
+		t.Fatalf("session-derived advice must rank first, got %q", pkg.CandidateAdvice[0].Source)
+	}
+}
+
+// Observed commands were replayed verbatim as "test" advice, so sessions
+// contributed machine-specific paths and pinned versions that are wrong by the
+// time anyone reads them.
+func TestTestAdviceRejectsUnreplayableCommands(t *testing.T) {
+	topic := model.TopicContext{
+		Name:      "CLI Release",
+		StartHere: []model.TopicStartFile{{Path: "brew/VERSION"}},
+	}
+	commands := []string{
+		"cd /Users/scy2be/Documents/repoguide && ls",     // machine-specific
+		`git commit -m "chore: bump VERSION to v0.22.3"`, // stale pinned version
+		"go test ./...", // reusable
+	}
+	var sessions []model.RepoSessionEvents
+	for i := 0; i < 3; i++ {
+		s := session("bump the cli version and align the brew tap", []string{"brew/VERSION"}, 9+i)
+		s.ID = fmt.Sprintf("release-session-%d", i)
+		for _, c := range commands {
+			s.Events = append(s.Events, model.SessionEvent{Kind: "tool_call", CommandText: c})
+		}
+		sessions = append(sessions, s)
+	}
+
+	pkg := BuildTaskPackage("bump the cli version and align the brew tap", "/repo", topic, sessions)
+	for _, item := range pkg.CandidateAdvice {
+		if item.Kind != "test" {
+			continue
+		}
+		if strings.Contains(item.Text, "/Users/") {
+			t.Fatalf("machine-specific command surfaced as advice: %q", item.Text)
+		}
+		if versionLiteral.MatchString(item.Text) {
+			t.Fatalf("pinned version surfaced as advice: %q", item.Text)
+		}
+	}
+	if !hasAdviceText(pkg.CandidateAdvice, "go test ./...") {
+		t.Fatalf("reusable command must survive filtering: %#v", pkg.CandidateAdvice)
+	}
+}

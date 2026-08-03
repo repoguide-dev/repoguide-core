@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"math"
 	"path/filepath"
+	"regexp"
 	"sort"
 	"strings"
 	"unicode"
@@ -18,9 +19,16 @@ const (
 	// A single matching session is useful orientation, but not enough to infer
 	// a reusable workflow, warning, or scope boundary.
 	minimumValidatedAdviceSessions = 2
-	// A non-zero overlap is too permissive for broad topics such as auth. The
-	// session must share at least a quarter of the task vocabulary.
-	minimumSessionSimilarity = 0.25
+	// A coarse pre-filter, not the thing that decides relevance - ranking by
+	// score, the topic file-overlap gate, and maxSimilarSessions do that.
+	// Measured over 602 real sessions with bestPromptSimilarity, a session's
+	// own prompt still matches at every gate up to 0.40, while the number of
+	// other sessions admitted falls only gradually (219 per query at 0.25, 177
+	// at 0.30, 139 at 0.40) because sessions in one repository share vocabulary
+	// by nature. Paraphrases set the ceiling: on a real task the matching
+	// topic's own cited evidence sessions scored 0.519, 0.519 and 0.359, so a
+	// gate above 0.35 starts discarding true positives.
+	minimumSessionSimilarity = 0.30
 )
 
 type FilePattern struct {
@@ -94,7 +102,7 @@ func BuildTaskPackage(task, repoRoot string, topic model.TopicContext, sessions 
 	if len(prepared) == 0 {
 		return topicStartTaskPackage(task, topic)
 	}
-	return behavioralTaskPackage(topic, prepared)
+	return behavioralTaskPackage(task, topic, prepared)
 }
 
 // FilterTopicToKnownFiles trims every file-path field on a topic down to
@@ -288,7 +296,7 @@ func curatedAdviceItem(topicID, kind, section string, item model.TopicGuidanceIt
 	return advice
 }
 
-func behavioralTaskPackage(topic model.TopicContext, sessions []preparedSession) TaskPackage {
+func behavioralTaskPackage(task string, topic model.TopicContext, sessions []preparedSession) TaskPackage {
 	counts := map[string]int{}
 	positions := map[string][]int{}
 	fileTotals := make([]int, 0, len(sessions))
@@ -368,7 +376,7 @@ func behavioralTaskPackage(topic model.TopicContext, sessions []preparedSession)
 		Behavioral:         true,
 		MatchingSessionIDs: sessionIDs(sessions),
 	}
-	pkg.CandidateAdvice = buildCandidateAdvice(topic, pkg, sessions)
+	pkg.CandidateAdvice = buildCandidateAdvice(task, topic, pkg, sessions)
 	pkg.Budget = BudgetForTask(1, isCrossCutting(topic, pkg))
 	pkg.SelectedAdvice = defaultAdviceSelection(pkg.CandidateAdvice, pkg.Budget)
 	return pkg
@@ -630,7 +638,7 @@ func BuildRoutingExamples(feedback []model.MCPFeedback) (positive, negative []To
 	return positive, negative
 }
 
-func buildCandidateAdvice(topic model.TopicContext, pkg TaskPackage, sessions []preparedSession) []AdviceItem {
+func buildCandidateAdvice(task string, topic model.TopicContext, pkg TaskPackage, sessions []preparedSession) []AdviceItem {
 	model.EnsureTopicProvenance(&topic)
 	items := make([]AdviceItem, 0, 32)
 	// Topic-wide evidence is deliberately not used as a denominator for a
@@ -661,8 +669,15 @@ func buildCandidateAdvice(topic model.TopicContext, pkg TaskPackage, sessions []
 		ids := sessionsSupportingBoundary(pkg.Boundary, sessions)
 		items = append(items, withEvidence(newAdvice(topic.ID, "scope_boundary", "scope:"+pkg.Boundary, pkg.Boundary+".", support, behaviorTotal, "session_history", ""), ids, behaviorTotal, "scope_distribution"))
 	}
-	// Parent-topic guidance remains stored for curation, but runtime candidates
-	// are exclusively extracted from the retrieved session population.
+	// Session-derived candidates come first and keep their measured support, so
+	// they outrank everything below. Curated topic guidance is appended rather
+	// than dropped: it carries support/total 0, which defaultAdviceSelection
+	// treats as a light prior, but it is the only place a hard-won warning
+	// lives once it has been distilled out of the raw session history. Building
+	// candidates purely from the session population meant that switching a
+	// topic from curated to behavioral silently deleted advice like "git mv
+	// failed twice here, use plain mv".
+	items = append(items, curatedTopicAdvice(task, topic)...)
 	return dedupeAdvice(items)
 }
 
@@ -770,12 +785,33 @@ func testAdviceFromSessions(topicID string, sessions []preparedSession, populati
 	items := make([]AdviceItem, 0, len(commandSessions))
 	for command, ids := range commandSessions {
 		ids = dedupePaths(ids)
-		if len(ids) == 0 {
+		if len(ids) == 0 || !reusableCommand(command) {
+			continue
+		}
+		// One session running a command once is somebody's one-off, not a
+		// repository convention. Only demand corroboration when there is more
+		// than one session to corroborate against.
+		if len(sessions) > 1 && len(ids) < 2 {
 			continue
 		}
 		items = append(items, withEvidence(newAdvice(topicID, "test", "session-command:"+command, command, len(ids), population, "session_history", ""), ids, population, "observed_command"))
 	}
 	return items
+}
+
+// versionLiteral matches a semver-ish version anywhere in a command.
+var versionLiteral = regexp.MustCompile(`\bv?\d+\.\d+\.\d+\b`)
+
+// reusableCommand rejects observed commands that cannot be replayed usefully by
+// someone else. Absolute paths are machine-specific (and leak the home
+// directory of whoever ran them); a pinned version is stale the moment it is
+// recorded, and handing an agent `git commit -m "bump VERSION to v0.22.3"`
+// months later is worse than saying nothing.
+func reusableCommand(command string) bool {
+	if strings.Contains(command, "/Users/") || strings.Contains(command, "/home/") {
+		return false
+	}
+	return !versionLiteral.MatchString(command)
 }
 
 func newAdvice(topicID, kind, key, text string, support, total int, source, lastObserved string) AdviceItem {
