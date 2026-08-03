@@ -1,6 +1,7 @@
 package experience
 
 import (
+	"fmt"
 	"strings"
 	"testing"
 
@@ -351,4 +352,33 @@ func session(prompt string, files []string, toolCalls int) model.RepoSessionEven
 	}
 	events = append(events, model.SessionEvent{Kind: "tool_call", ToolName: "Edit", WritePaths: abs})
 	return model.RepoSessionEvents{Events: events}
+}
+
+// A real session's tool results carry role "user" as well as its prompts. When
+// sessionPromptTokens counted them, the candidate token set grew from dozens to
+// thousands and tokenSimilarity's sqrt(len(task)*len(candidate)) denominator
+// pushed every session under minimumSessionSimilarity, so no repository ever
+// produced task-similar evidence.
+func TestBuildTaskPackageIgnoresToolOutputWhenScoringSimilarity(t *testing.T) {
+	topic := model.TopicContext{
+		Name:      "OAuth Login and Web Auth UI",
+		StartHere: []model.TopicStartFile{{Path: "web/src/App.jsx"}},
+	}
+	// Distinct tokens, not a repeated phrase: tokenSet dedupes, and it's the
+	// breadth of tool output that inflates the similarity denominator.
+	var noise strings.Builder
+	for i := 0; i < 2000; i++ {
+		fmt.Fprintf(&noise, "symbol%d ", i)
+	}
+	var sessions []model.RepoSessionEvents
+	for i := 0; i < 3; i++ {
+		s := session("hide login button for authenticated users", []string{"web/src/App.jsx"}, 9+i)
+		s.Events = append(s.Events, model.SessionEvent{Kind: "tool_result", Role: "user", Text: noise.String()})
+		sessions = append(sessions, s)
+	}
+
+	pkg := BuildTaskPackage("hide login button for authenticated users", "/repo", topic, sessions)
+	if !pkg.Behavioral || pkg.SimilarSessions != 3 {
+		t.Fatalf("behavioral=%v sessions=%d, want true/3 - tool output must not dilute prompt similarity", pkg.Behavioral, pkg.SimilarSessions)
+	}
 }

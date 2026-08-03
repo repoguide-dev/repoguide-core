@@ -1138,6 +1138,15 @@ func samePath(a, b string) bool {
 func sessionPromptTokens(session model.RepoSessionEvents) map[string]struct{} {
 	var prompts []string
 	for _, event := range session.Events {
+		// Tool results carry role "user" too. Counting them buried the handful
+		// of real prompt tokens under thousands of tool-output tokens, and
+		// since tokenSimilarity divides by sqrt(len(task)*len(candidate)) that
+		// inflated denominator pushed every session under
+		// minimumSessionSimilarity - no session ever qualified as task-similar.
+		// A blank Kind still falls back to Role, for parsers that don't set it.
+		if event.Kind != "" && event.Kind != "prompt" {
+			continue
+		}
 		if (event.Kind == "prompt" || event.Role == "user") && strings.TrimSpace(event.Text) != "" {
 			prompts = append(prompts, event.Text)
 		}
