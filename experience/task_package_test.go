@@ -382,3 +382,34 @@ func TestBuildTaskPackageIgnoresToolOutputWhenScoringSimilarity(t *testing.T) {
 		t.Fatalf("behavioral=%v sessions=%d, want true/3 - tool output must not dilute prompt similarity", pkg.Behavioral, pkg.SimilarSessions)
 	}
 }
+
+// Scoring a session by the union of its prompts made the similarity
+// denominator grow with session length, so a long session that did the exact
+// task in one of its turns scored below a short session that merely brushed
+// past it. Sessions are scored by their closest single prompt instead.
+func TestBuildTaskPackageScoresSessionsByClosestPrompt(t *testing.T) {
+	topic := model.TopicContext{
+		Name:      "Integration Tests",
+		StartHere: []model.TopicStartFile{{Path: "integration-test/run-all.sh"}},
+	}
+	var sessions []model.RepoSessionEvents
+	for i := 0; i < 3; i++ {
+		s := session("move the team-e2e folder into integration-test and wire it into run-all.sh",
+			[]string{"integration-test/run-all.sh"}, 9+i)
+		// The same long tail of unrelated turns every real session accumulates.
+		// Each contributes fresh vocabulary - tokenSet dedupes, so repeating one
+		// phrase would not grow the union the way real follow-ups do.
+		for j := 0; j < 40; j++ {
+			s.Events = append(s.Events, model.SessionEvent{
+				Kind: "prompt",
+				Text: fmt.Sprintf("follow%d up%d about%d topic%d word%d term%d phrase%d item%d", j, j, j, j, j, j, j, j),
+			})
+		}
+		sessions = append(sessions, s)
+	}
+
+	pkg := BuildTaskPackage("move the team-e2e folder into integration-test and wire it into run-all.sh", "/repo", topic, sessions)
+	if !pkg.Behavioral || pkg.SimilarSessions != 3 {
+		t.Fatalf("behavioral=%v sessions=%d, want true/3 - later unrelated turns must not bury a matching prompt", pkg.Behavioral, pkg.SimilarSessions)
+	}
+}

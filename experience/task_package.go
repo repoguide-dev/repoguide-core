@@ -75,7 +75,7 @@ func BuildTaskPackage(task, repoRoot string, topic model.TopicContext, sessions 
 		if len(known) > 0 && overlap == 0 {
 			continue
 		}
-		promptScore := tokenSimilarity(taskTokens, sessionPromptTokens(session))
+		promptScore := bestPromptSimilarity(taskTokens, session)
 		if promptScore < minimumSessionSimilarity {
 			continue
 		}
@@ -1135,15 +1135,12 @@ func samePath(a, b string) bool {
 	return a == b || strings.HasSuffix(a, "/"+b) || strings.HasSuffix(b, "/"+a)
 }
 
-func sessionPromptTokens(session model.RepoSessionEvents) map[string]struct{} {
+func sessionPrompts(session model.RepoSessionEvents) []string {
 	var prompts []string
 	for _, event := range session.Events {
-		// Tool results carry role "user" too. Counting them buried the handful
-		// of real prompt tokens under thousands of tool-output tokens, and
-		// since tokenSimilarity divides by sqrt(len(task)*len(candidate)) that
-		// inflated denominator pushed every session under
-		// minimumSessionSimilarity - no session ever qualified as task-similar.
-		// A blank Kind still falls back to Role, for parsers that don't set it.
+		// Tool results carry role "user" too, and their output dwarfs the real
+		// prompts. A blank Kind still falls back to Role, for parsers that
+		// don't set it.
 		if event.Kind != "" && event.Kind != "prompt" {
 			continue
 		}
@@ -1151,7 +1148,26 @@ func sessionPromptTokens(session model.RepoSessionEvents) map[string]struct{} {
 			prompts = append(prompts, event.Text)
 		}
 	}
-	return tokenSet(strings.Join(prompts, " "))
+	return prompts
+}
+
+// bestPromptSimilarity scores a session by its single closest prompt rather
+// than by the union of all of them. tokenSimilarity divides by
+// sqrt(len(task)*len(candidate)), so pooling every prompt in a session made the
+// denominator grow with session length: a long session that did the exact task
+// in turn one scored lower than a short session that only brushed past it.
+// Measured against a real repository, union scoring put 0 of 602 sessions over
+// minimumSessionSimilarity - including the sessions a topic itself cites as its
+// evidence, which landed just under the threshold. A session that did five
+// things should match a task when one of its prompts matches.
+func bestPromptSimilarity(taskTokens map[string]struct{}, session model.RepoSessionEvents) float64 {
+	best := 0.0
+	for _, prompt := range sessionPrompts(session) {
+		if score := tokenSimilarity(taskTokens, tokenSet(prompt)); score > best {
+			best = score
+		}
+	}
+	return best
 }
 
 func tokenSimilarity(task, candidate map[string]struct{}) float64 {
