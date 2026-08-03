@@ -772,14 +772,20 @@ func containsPath(paths []string, target string) bool {
 func testAdviceFromSessions(topicID string, sessions []preparedSession, population int) []AdviceItem {
 	commandSessions := map[string][]string{}
 	for _, session := range sessions {
+		failed := failedToolCallIDs(session.log)
 		for _, event := range session.log.Events {
 			command := strings.TrimSpace(event.CommandText)
 			if command == "" && len(event.Command) > 0 {
 				command = strings.Join(event.Command, " ")
 			}
-			if command != "" {
-				commandSessions[command] = append(commandSessions[command], session.log.ID)
+			// A command that errored is not a recipe. Recording every command
+			// that merely ran produced advice telling an agent to do exactly
+			// what the topic's own warning says fails there - most visibly
+			// suggesting `git mv` beside "git mv failed both attempts, use mv".
+			if command == "" || failed[event.ToolCallID] {
+				continue
 			}
+			commandSessions[command] = append(commandSessions[command], session.log.ID)
 		}
 	}
 	items := make([]AdviceItem, 0, len(commandSessions))
@@ -1499,4 +1505,18 @@ func plural(n int, singular, plural string) string {
 		return singular
 	}
 	return plural
+}
+
+// failedToolCallIDs collects the tool calls in a session whose result came back
+// an error, so their commands can be excluded from advice. Pairing is by
+// ToolCallID; a result carrying no ID can't be attributed and is ignored rather
+// than guessed at.
+func failedToolCallIDs(session model.RepoSessionEvents) map[string]bool {
+	failed := map[string]bool{}
+	for _, event := range session.Events {
+		if event.Kind == "tool_result" && event.IsError && event.ToolCallID != "" {
+			failed[event.ToolCallID] = true
+		}
+	}
+	return failed
 }

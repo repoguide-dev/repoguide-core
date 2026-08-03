@@ -483,3 +483,34 @@ func TestTestAdviceRejectsUnreplayableCommands(t *testing.T) {
 		t.Fatalf("reusable command must survive filtering: %#v", pkg.CandidateAdvice)
 	}
 }
+
+// Commands were harvested from session history regardless of outcome, so a
+// command that failed came back as advice - most visibly suggesting `git mv`
+// right beside a curated warning saying git mv fails in this repo.
+func TestTestAdviceExcludesFailedCommands(t *testing.T) {
+	topic := model.TopicContext{
+		Name:      "Integration Tests",
+		StartHere: []model.TopicStartFile{{Path: "integration-test/run-all.sh"}},
+	}
+	var sessions []model.RepoSessionEvents
+	for i := 0; i < 3; i++ {
+		s := session("move team-e2e into integration-test and wire it into run-all.sh",
+			[]string{"integration-test/run-all.sh"}, 9+i)
+		s.ID = fmt.Sprintf("e2e-session-%d", i)
+		s.Events = append(s.Events,
+			model.SessionEvent{Kind: "tool_call", ToolCallID: "call-fail", CommandText: "git mv team-e2e integration-test/team-e2e"},
+			model.SessionEvent{Kind: "tool_result", ToolCallID: "call-fail", IsError: true},
+			model.SessionEvent{Kind: "tool_call", ToolCallID: "call-ok", CommandText: "mv team-e2e integration-test/team-e2e"},
+			model.SessionEvent{Kind: "tool_result", ToolCallID: "call-ok"},
+		)
+		sessions = append(sessions, s)
+	}
+
+	pkg := BuildTaskPackage("move team-e2e into integration-test and wire it into run-all.sh", "/repo", topic, sessions)
+	if hasAdviceText(pkg.CandidateAdvice, "git mv team-e2e integration-test/team-e2e") {
+		t.Fatalf("a command that errored must not be advice: %#v", pkg.CandidateAdvice)
+	}
+	if !hasAdviceText(pkg.CandidateAdvice, "mv team-e2e integration-test/team-e2e") {
+		t.Fatalf("the command that succeeded must survive: %#v", pkg.CandidateAdvice)
+	}
+}
