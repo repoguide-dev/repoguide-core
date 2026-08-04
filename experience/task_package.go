@@ -314,9 +314,21 @@ func behavioralTaskPackage(task string, topic model.TopicContext, sessions []pre
 	for path, count := range counts {
 		files = append(files, FilePattern{Path: path, Sessions: count})
 	}
+	taskTokens := tokenSet(task)
 	sort.Slice(files, func(i, j int) bool {
 		if files[i].Sessions != files[j].Sessions {
 			return files[i].Sessions > files[j].Sessions
+		}
+		// Churn decides first: a file most matching sessions edited really is
+		// the place to start. It just cannot discriminate when every count is
+		// the same, which is the norm at one or two matching sessions - and
+		// then the order was arbitrary, leading a task about `repoguide
+		// sessions` with cmd/stats.go and a web page task with
+		// backend/server/server.go. Overlap with the task's own words breaks
+		// that tie before position does.
+		ri, rj := pathRelevance(files[i].Path, taskTokens), pathRelevance(files[j].Path, taskTokens)
+		if ri != rj {
+			return ri > rj
 		}
 		pi, pj := averagePosition(positions[files[i].Path]), averagePosition(positions[files[j].Path])
 		if pi != pj {
@@ -324,6 +336,13 @@ func behavioralTaskPackage(task string, topic model.TopicContext, sessions []pre
 		}
 		return files[i].Path < files[j].Path
 	})
+	// Edit frequency decides which files are typical for this kind of work, but
+	// it is a poor way to decide which to name first. With only one or two
+	// matching sessions every count is 1 or 2, so the ordering was noise: a
+	// task about `repoguide sessions` led with cmd/stats.go, and a web page
+	// task led with backend/server/server.go - simply the hottest file the
+	// matching sessions happened to touch. Keep churn as the inclusion test,
+	// then order what survives by overlap with the task's own words.
 	typical := files[:0]
 	for _, file := range files {
 		if file.Sessions*2 >= len(sessions) {
@@ -808,6 +827,11 @@ func testAdviceFromSessions(topicID string, sessions []preparedSession, populati
 // versionLiteral matches a semver-ish version anywhere in a command.
 var versionLiteral = regexp.MustCompile(`\bv?\d+\.\d+\.\d+\b`)
 
+// lineRangeRead matches a bare `sed -n '720,920p' file` style read. These are
+// somebody scrolling a file during one investigation; the line numbers are
+// meaningless to anyone else and stale the moment the file changes.
+var lineRangeRead = regexp.MustCompile(`^sed\s+-n\s+['"]?\d+,\d+p`)
+
 // reusableCommand rejects observed commands that cannot be replayed usefully by
 // someone else. Absolute paths are machine-specific (and leak the home
 // directory of whoever ran them); a pinned version is stale the moment it is
@@ -815,6 +839,9 @@ var versionLiteral = regexp.MustCompile(`\bv?\d+\.\d+\.\d+\b`)
 // months later is worse than saying nothing.
 func reusableCommand(command string) bool {
 	if strings.Contains(command, "/Users/") || strings.Contains(command, "/home/") {
+		return false
+	}
+	if lineRangeRead.MatchString(strings.TrimSpace(command)) {
 		return false
 	}
 	return !versionLiteral.MatchString(command)
@@ -1519,4 +1546,17 @@ func failedToolCallIDs(session model.RepoSessionEvents) map[string]bool {
 		}
 	}
 	return failed
+}
+
+// pathRelevance counts how many of the task's words appear in a file's path.
+// Deliberately crude: it only has to break the tie between files a churn count
+// cannot separate, not to understand the path.
+func pathRelevance(path string, taskTokens map[string]struct{}) int {
+	score := 0
+	for token := range tokenSet(path) {
+		if _, ok := taskTokens[token]; ok {
+			score++
+		}
+	}
+	return score
 }

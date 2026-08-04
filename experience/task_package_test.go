@@ -455,7 +455,8 @@ func TestTestAdviceRejectsUnreplayableCommands(t *testing.T) {
 	commands := []string{
 		"cd /Users/scy2be/Documents/repoguide && ls",     // machine-specific
 		`git commit -m "chore: bump VERSION to v0.22.3"`, // stale pinned version
-		"go test ./...", // reusable
+		"sed -n '720,920p' web/src/App.jsx",              // one person scrolling a file
+		"go test ./...",                                  // reusable
 	}
 	var sessions []model.RepoSessionEvents
 	for i := 0; i < 3; i++ {
@@ -477,6 +478,9 @@ func TestTestAdviceRejectsUnreplayableCommands(t *testing.T) {
 		}
 		if versionLiteral.MatchString(item.Text) {
 			t.Fatalf("pinned version surfaced as advice: %q", item.Text)
+		}
+		if lineRangeRead.MatchString(item.Text) {
+			t.Fatalf("line-range read surfaced as advice: %q", item.Text)
 		}
 	}
 	if !hasAdviceText(pkg.CandidateAdvice, "go test ./...") {
@@ -512,5 +516,32 @@ func TestTestAdviceExcludesFailedCommands(t *testing.T) {
 	}
 	if !hasAdviceText(pkg.CandidateAdvice, "mv team-e2e integration-test/team-e2e") {
 		t.Fatalf("the command that succeeded must survive: %#v", pkg.CandidateAdvice)
+	}
+}
+
+// At one or two matching sessions every edit count is identical, so churn
+// cannot order the files and the first one named was arbitrary - a task about
+// `repoguide sessions` led with cmd/stats.go. Task-word overlap breaks that
+// tie, without overriding a genuine churn signal.
+func TestBehavioralStartFilesBreakChurnTiesByRelevance(t *testing.T) {
+	topic := model.TopicContext{
+		Name: "Session Views",
+		StartHere: []model.TopicStartFile{
+			{Path: "repoguide-cli/cmd/sessions.go"}, {Path: "repoguide-cli/cmd/stats.go"},
+		},
+	}
+	var sessions []model.RepoSessionEvents
+	for i := 0; i < 2; i++ {
+		// Both files edited by both sessions: churn is a dead heat.
+		sessions = append(sessions, session("add a filter flag to repoguide sessions",
+			[]string{"repoguide-cli/cmd/stats.go", "repoguide-cli/cmd/sessions.go"}, 9+i))
+	}
+
+	pkg := BuildTaskPackage("add a --since filter flag to repoguide sessions", "/repo", topic, sessions)
+	if len(pkg.Files) == 0 {
+		t.Fatalf("expected ranked files, got none: %#v", pkg)
+	}
+	if pkg.Files[0].Path != "repoguide-cli/cmd/sessions.go" {
+		t.Fatalf("start file = %q, want cmd/sessions.go - the task names sessions, not stats", pkg.Files[0].Path)
 	}
 }
